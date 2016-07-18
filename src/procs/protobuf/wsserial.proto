@@ -1,0 +1,38 @@
+package wsserial;
+
+option optimize_for = LITE_RUNTIME;
+
+message WSsend {
+	repeated WSdata data = 1;
+	repeated WSlabel label = 2;
+	optional WStuple tuple = 3;
+}
+
+message WSrespond {
+	required bool rcv = 1;
+	optional bool stop = 2;
+}
+
+message WSlabel {
+	required uint64 labelid = 1;
+	required string name = 2;
+}
+
+message WStuple {
+  repeated uint64 labelid = 1 [packed=true];
+  repeated WSdata member = 2;
+  repeated WStuple subtuple = 3;
+}
+
+message WSdata {
+  required uint64 dtype = 1;
+  repeated uint64 labelid = 2 [packed=true];
+  optional bytes data = 3;
+  optional uint64 num = 4;
+  optional double dbl = 5;
+  repeated string labelnames = 6;
+  optional string dtypename = 7;
+  optional uint64 linktype = 8;
+  optional uint64 linklen = 9;
+}
+
