@@ -580,7 +580,7 @@ static inline int stringhash5_open_sht_table(stringhash5_t ** table, void * proc
                if (max_records && ((stringhash5_t *)(*table))->max_records != 
                                    check_sh5_max_records(max_records)) {
                     error_print("stringhash5 table max_records %"PRIu64" not equal to converted input value %d",
-                               ((stringhash5_t *)(*table))->max_records, 
+                               (uint64_t)((stringhash5_t *)(*table))->max_records, 
                                check_sh5_max_records(max_records));
                     return 0;
                }
@@ -589,7 +589,7 @@ static inline int stringhash5_open_sht_table(stringhash5_t ** table, void * proc
                if (data_alloc && ((stringhash5_t *)(*table))->data_alloc != 
                                   stringhash5_pad_alloc(data_alloc)) {
                     error_print("stringhash5 table data_alloc %"PRIu64" not equal to local stringhash5_pad_alloc(data_alloc) %d",
-                                ((stringhash5_t *)(*table))->data_alloc, 
+                                (uint64_t)((stringhash5_t *)(*table))->data_alloc, 
                                 stringhash5_pad_alloc(data_alloc));
                     return 0;
                }
@@ -784,7 +784,7 @@ static inline int stringhash5_check_params(void ** table, uint32_t max_records, 
      //give an error if max_records does not match the input value for this thread
      if (((stringhash5_t *)(*table))->max_records != check_sh5_max_records(max_records)) {
           error_print("stringhash5 table max_records %"PRIu64" not equal to converted input value %d",
-                     ((stringhash5_t *)(*table))->max_records, 
+                     (uint64_t)((stringhash5_t *)(*table))->max_records, 
                      check_sh5_max_records(max_records));
           return 0;
      }
@@ -792,7 +792,7 @@ static inline int stringhash5_check_params(void ** table, uint32_t max_records, 
      //give an error if data_alloc does not match the input value for this thread
      if (((stringhash5_t *)(*table))->data_alloc != stringhash5_pad_alloc(data_alloc)) {
           error_print("stringhash5 table data_alloc %"PRIu64" not equal to local stringhash5_pad_alloc(data_alloc) %d",
-                      ((stringhash5_t *)(*table))->data_alloc, 
+                      (uint64_t)((stringhash5_t *)(*table))->data_alloc, 
                       stringhash5_pad_alloc(data_alloc));
           return 0;
      }
@@ -1238,7 +1238,7 @@ static inline void stringhash5_mark_as_used(stringhash5_t * sht, uint32_t bucket
 
 static inline void stringhash5_get_bucket_databin(stringhash5_t *sht, void *data,
                                                   uint32_t *bucket, uint32_t *databin) {
-     uint64_t position = (((uint64_t)data) - ((uint64_t)sht->data))/((uint64_t)sht->data_alloc);
+     uint64_t position = (uint64_t)((uint8_t*)data - sht->data)/((uint64_t)sht->data_alloc);
      *bucket= position >> SH5_DEPTH_BITS;
      *databin= position - (*bucket << SH5_DEPTH_BITS);
 }

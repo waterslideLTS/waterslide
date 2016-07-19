@@ -440,7 +440,7 @@ time_t sysutil_get_hourly_increment_ts(char * optarg) {
       return increment_ts;
      }
      else {
-      fprintf(stderr, "invalid time specified, not a multiple of 1 hour: %zd will be changed to 0\n", increment_ts);
+      fprintf(stderr, "invalid time specified, not a multiple of 1 hour: %"PRIu64" will be changed to 0\n", (uint64_t)increment_ts);
      }
      return 0;
 }

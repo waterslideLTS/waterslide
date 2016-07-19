@@ -61,6 +61,10 @@ The WaterSlide package is distributed as either a compressed tarball (typically
 named waterslide<datetag>.tar.bzip2) or via a git repository. Set up your build
 environment based on your distribution environment.
 
+If using Debian or Ubuntu you will need the following packages:
+----------------------------------------------------
+build-essential flex bison zlib1g-dev
+
 Extract the tarball:
 --------------------
 $ tar xvfj waterslide<datetag>.tar.bzip2

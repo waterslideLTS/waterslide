@@ -27,7 +27,6 @@
 /src/procs/protobuf/*.pb.cc
 /src/procs/protobuf/*.pb.h
 /lib/
-/bin/
 
 /src/pkg/hwlocBuildDir/
 /src/pkg/pbtemp/

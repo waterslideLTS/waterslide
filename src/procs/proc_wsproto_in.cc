@@ -201,11 +201,11 @@ static int read_names_file(proc_instance_t *proc) {
      while ( fgets(buf, LOCAL_FILENAME_MAX, proc->in) ) {
           size_t len = strlen(buf);
           char *p = buf;
-          while ( isspace(*p) ) {
-               *p++;
+          while ( len && isspace(*p) ) {
+               p++;
                len--;
           }
-          while ( isspace(p[len-1]) ) {
+          while ( len && isspace(p[len-1]) ) {
                p[len-1] = '\0';
                len--;
           }

@@ -311,10 +311,10 @@ int print_wsperf(mimo_t * mimo) {
      for (i = num_kids-1; i > -1; i--) {
           uint32_t j = kidindx[i];
           if (kidcount[nrank][j] > 0 || flushcount[nrank][j]) {
-               fprintf(stderr,"kid %4u is %-24s:  proc_func calls  = %12lu, pct = %10.3f\n", 
+               fprintf(stderr,"kid %4u is %-24s:  proc_func calls  = %12"PRIu64", pct = %10.3f\n", 
                        j+1, kidname[j], kidcount[nrank][j], kidtot[i]/kidtime*100.);
                if (flushcount[nrank][j]) {
-                    fprintf(stderr,"                                       proc_flush calls = %12lu\n", 
+                    fprintf(stderr,"                                       proc_flush calls = %12"PRIu64"\n", 
                             flushcount[nrank][j]);
                }
           }
