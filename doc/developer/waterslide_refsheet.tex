@@ -1,0 +1,310 @@
+%% Single page reference to WATERSLIDE (WS) commands and 'kids'.
+
+%% This produces the correct format, landscape .pdf output:
+%% pdflatex waterslide_refsheet.tex
+%% acroread waterslide_refsheet.pdf
+
+%% See also the Makefile in the WATERSLIDE code development repository
+%% doc/developer/
+
+\documentclass[landscape]{article}
+\usepackage[letterpaper,landscape]{geometry}
+\usepackage{multicol}
+\usepackage{array}
+\usepackage{fancyhdr}
+\usepackage{url}
+
+%% Page dimensions, for letter paper in landscape orientation:
+\geometry{top=0.75in,left=0.5in,right=0.5in,bottom=0.75in}
+
+%% Put info in the header and footer.
+\pagestyle{fancy}
+\lhead{} \rhead{}
+\chead{}
+\lfoot{} \rfoot{}
+\cfoot{}
+\renewcommand\headrulewidth{0.5pt}
+\renewcommand\footrulewidth{0.5pt}
+
+%% Constants:
+\def\stdversion{1.0.0}          %Version of WS
+\def\stddate{17~March~2016}     %Date of the WS release
+\def\qrversion{0.1}             %Version of this quick reference.
+
+\textwidth=10in
+
+%% Definition for lettersize paper, three columns:
+\newdimen\intercolumnskip	%horizontal space between columns
+\def\scaledmag#1{ scaled \magstep #1}
+\font\titlefont=cmbx10 \scaledmag2
+\font\headingfont=cmbx10 \scaledmag1
+\font\subheadingfont=cmbx9
+\font\smallfont=cmr6
+\font\smallsy=cmsy6
+\font\eightrm=cmr8
+\font\eightbf=cmbx8
+\font\eightit=cmti8
+\font\eighttt=cmtt8
+\font\eightmi=cmmi8
+\font\eightsy=cmsy8
+\textfont0=\eightrm
+\textfont1=\eightmi
+\textfont2=\eightsy
+\def\rm{\eightrm}
+\def\bf{\eightbf}
+\def\it#1{\begin{itshape}#1\end{itshape}}
+\def\tt#1{\texttt{#1}}
+\normalbaselineskip=.8\normalbaselineskip
+\normallineskip=.8\normallineskip
+\normallineskiplimit=.8\normallineskiplimit
+\normalbaselines\rm		%make definitions take effect
+\intercolumnskip=.46in
+\parindent 0pt
+\parskip 1ex plus .5ex minus .5ex
+%% Gives tighter packing:
+%% \setlength{\parskip}{0pt plus 0.5ex} 
+
+%% Custom definitions:
+\newcommand{\command}[1]{\bf{\tt{#1}}}
+\newcommand{\cmd}[2]{\command{\url+#1+}\rm{~-~#2}\hangindent=10pt\par}
+
+\def\small{\smallfont\textfont2=\smallsy\baselineskip=.8\baselineskip}
+
+% newcolumn - force a new column.  Use sparingly, probably only for
+% the first column of a page, which should have a title anyway.
+\outer\def\newcolumn{\vfill\eject}
+
+% title - page title.  Argument is title text.
+\outer\def\title#1{{\titlefont\centerline{#1}}\vskip 1ex plus .5ex}
+
+%% Redefine section comamnds to use less space
+\makeatletter
+\renewcommand{\section}{\@startsection{section}{1}{0mm}%
+  {-1ex plus -.5ex minus -.2ex}%
+  {0.5ex plus .2ex}%x
+  {\normalfont\large\bfseries}}
+\renewcommand{\subsection}{\@startsection{subsection}{2}{0mm}%
+  {-1ex plus -.5ex minus -.2ex}%
+  {0.5ex plus .2ex}%
+  {\normalfont\normalsize\bfseries}}
+\renewcommand{\subsubsection}{\@startsection{subsubsection}{3}{0mm}%
+  {-1ex plus -.5ex minus -.2ex}%
+  {1ex plus .2ex}%
+  {\normalfont\small\bfseries}}
+\makeatother
+
+%% Don't print section and subsection numbers:
+\setcounter{secnumdepth}{0}
+
+% paralign - begin paragraph containing an alignment.
+% If an \halign is entered while in vertical mode, a parskip is never
+% inserted.  Using \paralign instead of \halign solves this problem.
+\def\paralign{\vskip\parskip\halign}
+
+% \<...> - surrounds a variable name in a code example
+\def\<#1>{{\it #1\/}}
+
+% kbd - argument is characters typed literally.  Like the Texinfo command.
+\def\kbd#1{{\tt#1}\null}	%\null so not an abbrev even if period follows
+
+% beginexample...endexample - surrounds literal text, such a code example.
+% typeset in a typewriter font with line breaks preserved
+\def\beginexample{\par\leavevmode\begingroup
+  \obeylines\obeyspaces\parskip0pt\tt}
+{\obeyspaces\global\let =\ }
+\def\endexample{\endgroup}
+
+\begin{document}
+\raggedright
+%% Set the overall font size here:
+\footnotesize
+\begin{multicols}{3}
+
+\title{WATERSLIDE Kids}
+\centerline{(for version \stdversion)}
+
+This is a single-page quick reference to the WATERSLIDE (WS)
+stream processing system, and its modules, called `kids.'  It conforms
+to version \stdversion, published on \stddate. This document is
+version \qrversion. It is stored in the WS code development
+repository, at \path{doc/developer/waterslide_refsheet.tex}.
+
+To see further documentation, try
+`\tt{wsman KID}' or `\tt{wsman -v KID}' or `\tt{wsman 
+  --help}'.
+
+In general, the ordering of the kids within the groups below is
+from most commonly used to least commonly used.
+
+
+\section{Input and Output}
+
+\cmd{csv_in}{a source for event tuples based on character-delimited
+  data}
+
+\cmd{file_in}{reads files as memmap-ed binary
+  buffers}
+
+\cmd{wsproto_in}{reads data or files from stdin in Protocol Buffer
+  formats (wsproto and pbmeta), creates metadata}
+
+\cmd{print}{prints tuple data to STDOUT or a file}
+
+\cmd{wsproto_out}{prints metadata in Protocol Buffer format}
+
+
+\section{Data and Tuple Manipulation}
+
+\cmd{subtuple}{selects data based on presence of tuple members}
+
+\cmd{removefromtuple}{specifies items by label in a tuple to be
+  removed from a tuple. The emitted tuple will not contain the
+  specified items.}
+
+\cmd{tuplehash}{generates a hash based on specific items in a
+  tuple. This is used to combine data from different data fields into
+  a single key for state tracking algorithms.}
+
+\cmd{splittuple}{splits tuple into multiple tuples based on labels. If
+  multiple items exist in a tuple, it will create a tuple for each
+  item. It is also possible to specify data to keep/replicate for each
+  new tuple.}
+
+\cmd{mergetuple}{merges data from multiple tuples based on a shared,
+  specified key}
+
+\cmd{mklabelset}{create a label set from labels of tuple members}
+
+\cmd{appendfirstitem}{appends item to tuple based on key, useful for
+  inference and merging}
+
+\cmd{appendlast}{appends last item to tuple based on key, useful for
+  inference and merging}
+
+
+\section{Counting}
+
+\cmd{bandwidth}{tracks items per second, counts all items. Reports
+  output at end of stream}
+
+\cmd{keycount}{counts number of items with a specific key value. For
+  instance the number of events with name ABCD}
+
+\cmd{keyadd}{adds values of a given labeled data field and accumulates
+  these sums based on key}
+
+\cmd{keyaverage}{computes the average value of a data field based on
+  sums of the same key}
+
+\cmd{labelstat}{counts the occurrence of each label within tuples}
+
+\cmd{heavyhitters}{adds values of a given labeled data field and key,
+  keeps track of the top N keys}
+
+\section{Numeric Calculation}
+
+\cmd{calc}{performs numerical calculations. Can also act as a filter
+  based on numerical results.}
+
+
+\section{Filtering}
+
+\cmd{uniq}{determines if labeled items are new. Multiple ports allows
+  for removal and queries against the state of each labeled key.}
+
+\cmd{uniqexpire}{determines if items are new, expires out old items
+  based on timestamp}
+
+\cmd{firstn}{selects the first N tuples from each key}
+
+\cmd{mostnew}{declares the first N items as new}
+
+\cmd{bloom}{determines if items are new, keep track of items using a
+  bloom filter}
+
+\cmd{sample}{samples items based on probability}
+
+\cmd{cntquery}{determine if the value of a keys is mostly
+  positive. This module has multiple ports, one for INCREMENTing, one
+  for DECREMENTing, one for querying. This is for finding items
+  sequence conditions that are biased.}
+
+
+\section{Matching}
+
+\cmd{match}{finds strings in character buffers that match a dictionary
+  of strings at arbitrary offset locations}
+
+\cmd{fixedmatch}{finds strings in character buffer that match a
+  dictionary of strings at fixed, explicit locations in the character
+  buffer. Can also be used for protocol detection.}
+
+\cmd{match_unit}{matches integers with specified properties and/or
+  numeric ranges}
+
+\cmd{equal}{checks to see if two elements in a tuple are equal}
+
+\cmd{haslabel}{checks to see if a label or set of labels exists in an
+  event or members of a tuple}
+
+\cmd{re2}{when WS is compiled with Google’s re2 library, this allows
+  you to specify perl compatible regular expressions including
+  extracting content}
+
+
+\section{State Tracking}
+
+\cmd{uniq}{only passes one uniq item. Items selected by label.}
+
+\cmd{appendfirstitem}{stores first item (value) at a key, subsequent
+  queries of the key results in the stored value appended to the query
+  tuple}
+
+\cmd{appendlast}{stores last item (value) at a key, subsequent queries
+  of the key results in the stored value appended to the query tuple}
+
+\cmd{keyflow}{creates a temporal hash based on keys that occur close
+  in time}
+
+\cmd{keeplast}{stores the last data item at the key. Only outputs data
+  when table is full, or the table is flushed.}
+
+\cmd{cntquery}{determines of state of key has reached a counting
+  threshold. Uses ports to increment or decrement state. Can also be
+  used to check for imbalance of events, such as HTTP server hostnames
+  occurring without a reference.}
+
+\cmd{firstn}{passes the first n events for each key}
+
+\cmd{keepn}{keeps the last n items at the key}
+
+\cmd{stateclimb}{user specifies labels and values (positive or
+  negative). when label is found the value is added to accumulator for
+  each key. If accumulator reaches a target value, then output is
+  triggered.}
+
+
+\section{Decoding}
+
+\cmd{base64}{takes an identified base64 encoded buffer and decodes it
+  into another buffer}
+
+\cmd{asciihex}{takes an ASCII string with hex values and converts them
+  to binary}
+
+\section{Distributed Processing}
+
+\cmd{tcpthrow}{writes TCP messages, sends to connected client}
+
+\cmd{tcpcatch}{reads from TCP server, creates binary data for parsing}
+
+\section{Miscellaneous Commands}
+
+\cmd{flush}{resets state hash tables, based on number of events seen
+  or elapsed time}
+
+\rule{0.3\linewidth}{0.25pt}
+\scriptsize
+
+\end{multicols}
+\end{document}

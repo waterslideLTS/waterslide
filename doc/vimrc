@@ -1,0 +1,15 @@
+filetype on
+set sw=5
+set ts=5
+autocmd FileType c,cpp,slang set tw=80
+autocmd FileType c,cpp,slang set ve=block
+autocmd FileType c,cpp,slang set expandtab
+autocmd FileType c,cpp,slang set cindent
+autocmd FileType c,cpp,slang set cino=(0,g0,:0
+autocmd FileType tex,latex setlocal spell spelllang=en_us
+autocmd FileType tex,latex set wm=4
+autocmd FileType tex,latex set textwidth=100
+syntax on
+set backspace=indent,eol,start
+set ruler
+set tags=./tags,tags;

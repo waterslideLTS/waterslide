@@ -1,0 +1,154 @@
+package wsproto;
+
+// wsproto version 2
+// In the file header there is a two byte field for each the protocol and the 
+// version.  The protocol is 2 and the version is 2.
+
+option java_package = "wsproto";
+option java_outer_classname = "MetaprocProtobuf";
+
+option optimize_for = LITE_RUNTIME;
+
+// FEATURES
+// 1) string labels are included with the data elements
+// 2) the enum specifies the datatype
+// 3) data is stored in native protocol buffer types (not just byte[])
+
+message wsdata {
+  // list of types (see lib/wstypes.c)
+  enum datatype {
+    // dtype_tuple
+    //   Stores each tuple member in a tuple_member
+    TUPLE_TYPE = 1;
+
+    // dtype_string
+    //  Store data in string_data
+    STRING_TYPE = 2;
+
+    // dtype_binary
+    //  Store data in bytes_data
+    BINARY_TYPE = 3;
+
+    // dtype_fixedstring
+    //  Store data in string_data
+    FIXEDSTRING_TYPE = 4;
+
+    // dtype_mediumstring
+    //  Store data in string_data
+    MEDIUMSTRING_TYPE = 5;
+
+    // dtype_double
+    //  Store data in double_data
+    DOUBLE_TYPE = 6;
+
+    // dtype_uint
+    //  Store data in uint32_data
+    UINT_TYPE = 7; 
+
+    // dtype_uint64
+    //  Store data in uint64_data
+    UINT64_TYPE = 8;
+
+    // dtype_uint16
+    //  Store data in uint32_data
+    UINT16_TYPE = 10;
+ 
+    // dtype_uint8
+    //  Store data in uint32_data
+    UINT8_TYPE = 11;
+ 
+    // dtype_label
+    //  Store data in string_data
+    LABEL_TYPE = 13;
+
+    // dtype_ts
+    //  Store timestamp seconds in uint64_data
+    //  Store timestamp microseconds in uint64_data2
+    //   Note: microseconds shouldn't ever be larger than 1,000,000
+    TS_TYPE = 14;
+
+    // dtype_int
+    //  Store data in sint32_data
+    INT_TYPE = 16;
+   
+    // dtype_tinystring
+    //  Store data in string_data
+    TINYSTRING_TYPE = 19;
+
+    // dtype_smallstring
+    //  Store data in string_data
+    SMALLSTRING_TYPE = 20;
+
+    // dtype_bigstring
+    //  Store data in string_data
+    BIGSTRING_TYPE = 21;
+
+    // dtype_labelset
+    //  Store data in bytes_data
+    LABELSET_TYPE = 22;
+
+    // dtype_vector_double
+    //  Store data in bytes_data
+    VECTOR_DOUBLE_TYPE = 23;
+
+    // dtype_vector_uint32
+    //  Store data in bytes_data
+    VECTOR_UINT32_TYPE = 24;
+
+    // dtype_array_double
+    //  Store data in bytes_data
+    ARRAY_DOUBLE_TYPE = 26;
+
+    // dtype_array_uint
+    //  Store data in bytes_data
+    ARRAY_UINT_TYPE = 27;
+
+    // Unimplemented types
+    //FLUSH_TYPE 
+    //FSTR_TYPE 
+    //MMAP_TYPE
+    //MASSIVESTRING_TYPE
+    //HUGEBLOCK_TYPE
+    //...
+  }
+
+  // the datatype of this wsdata
+  required datatype dtype = 1;
+
+  // the list of labels for this data field
+  repeated string label = 2;
+
+  // data field 
+  // Notes: 
+  // 1) because protocol buffers to not have unions, the fields below
+  //   marked as optional and only one is expected to be used at a time
+
+  repeated wsdata tuple_member = 3;
+  
+  // a string must always contain UTF-8 encoded or 7-bit ASCII text
+  optional string string_data = 4;
+  
+  optional bytes bytes_data = 5;
+  
+  optional double double_data = 6;
+  
+  optional uint32 uint32_data = 7; 
+  
+  optional uint32 uint32_data2 = 8; 
+  
+  optional uint64 uint64_data = 9;
+  
+  optional uint64 uint64_data2 = 10;
+  
+  // fixed64 is more efficient if values are often greater than 2^56
+  optional fixed64 fixed64_data = 11; 
+ 
+  // sint32 is faster for negative numbers
+  optional sint32 sint32_data = 12; 
+  
+  optional sint32 sint32_data2 = 15; 
+
+  optional uint32 uint32_data3 = 13; 
+
+  optional bytes bytes_data2 = 14;
+}
