@@ -47,7 +47,6 @@ typedef struct _wsheap_t
      size_t data_size;
      void * buffer;
      void ** heap;
-     void ** sort;
      wsheap_compair cmp;
      wsheap_replace replace;
      void * aux;
@@ -93,11 +92,6 @@ static inline wsheap_t* wsheap_init(uint64_t max,
           error_print("failed wsheap_init calloc heap pointers");
           return NULL;
      }
-     h->sort = (void **)calloc(max, sizeof(void*));
-     if (!h->sort) {
-          error_print("failed wsheap_init calloc sort pointers");
-          return NULL;
-     }
      //point heap at buffers
      uint64_t i;
      for (i = 0; i < max; i++) {
@@ -110,7 +104,6 @@ static inline wsheap_t* wsheap_init(uint64_t max,
 static inline void wsheap_reset(wsheap_t * h)
 {
      memset(h->buffer, 0, h->max * h->data_size); 
-     memset(h->sort, 0, h->max * sizeof(void *)); 
      uint64_t i;
      for (i = 0; i < h->max; i++) {
           h->heap[i] = h->buffer + (i*h->data_size);
@@ -232,53 +225,6 @@ static inline void wsheap_sort_inplace(wsheap_t *h) {
      h->count = total;
 }
 
-//destroys heap property
-static inline void wsheap_sort_side(wsheap_t *h) {
-     uint64_t done = 0;
-
-     while (done < h->count) {
-          done++;
-          h->sort[h->count - done] = h->heap[0];
-
-          h->heap[0] = NULL;
-          uint64_t parent = 0;
-         
-          while (1) { 
-               uint64_t child2 = (parent + 1) * 2;
-               uint64_t child1 = child2 - 1;
-               uint64_t min_child = child1;
-
-               if (child1 >= h->count) {
-                    break;
-               }
-               else if (child2 >= h->count) {
-                    if (!h->heap[child1]) {
-                         break;
-                    }
-               }
-               else {
-                    if (h->heap[child1]) {
-                         if (h->heap[child2] &&
-                             (h->cmp(h->heap[child1], h->heap[child2]) > 0)) {
-                              min_child = child2;
-                         }
-                    }
-                    else {
-                         if (h->heap[child2]) {
-                              min_child = child2;
-                         }
-                         else {
-                              break;
-                         }
-                    }
-               }
-               
-               h->heap[parent] = h->heap[min_child];         
-               h->heap[min_child] = NULL;         
-               parent = min_child;
-          }
-     }
-}
 #ifdef __cplusplus
 CPP_CLOSE
 #endif // __cplusplus
