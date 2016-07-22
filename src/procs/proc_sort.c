@@ -283,7 +283,7 @@ static int proc_flush(void * vinstance, wsdata_t* input_data,
                         ws_doutput_t * dout, int type_index) {
      proc_instance_t * proc = (proc_instance_t*)vinstance;
 
-     dprint("sort flush %s", proc->len);
+     dprint("sort flush %d", proc->len);
      if (proc->len) {
           sort_dump(proc, dout);
      }
