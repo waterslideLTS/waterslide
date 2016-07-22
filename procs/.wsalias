@@ -138,6 +138,8 @@ tcpcatch: tcpcatch
 tcpcatch: tcpcatch
 tcpthrow: tcpthrow
 tcpthrow: tcpthrow
+top: top
+top: top
 tr: tr
 tr: tr
 tuplehash: hashtuple, tuplehasher, metatuplehash, thash

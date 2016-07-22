@@ -44,6 +44,7 @@ SOFTWARE.
 #include "error_print.h"
 #include "dprint.h"
 #include "evahash64.h"
+#include "wsheap.h"
 
 #ifdef __cplusplus
 CPP_OPEN
@@ -61,47 +62,60 @@ typedef struct _hh_node_t
      uint64_t         key;
      uint64_t         value;
      uint64_t         starting_value;
-     struct _hh_node_t * q_prev;
-     struct _hh_node_t * q_next;
      struct _hh_node_t * ht_prev;
      struct _hh_node_t * ht_next;
      uint8_t           data[];
 } hh_node_t;
 
-typedef void (* heavyhitters_callback)(void * /*data*/);
+static int hh_node_compair(void * vfirst, void * vsecond) {
+     hh_node_t * first = (hh_node_t*)vfirst;
+     hh_node_t * second = (hh_node_t*)vsecond;
+
+     if (first->value < second->value) {
+          return -1;
+     }
+     else if (first->value == second->value) {
+          return 0;
+     }
+     else {
+          return 1;
+     }
+}
+
+static void hh_node_replace(void * vnode, void * vreplace, void * aux);
+typedef void (* heavyhitters_release)(void * /*data*/);
 
 typedef struct _heavyhitters_t
 {
      uint64_t     max;
-     uint64_t     count;
      size_t       data_size;
-     size_t       node_data_size;
-     void *       buffer;
-     hh_node_t **  hashtable;
-     hh_node_t *  q_head;
-     hh_node_t *  q_tail;
-     heavyhitters_callback release;
+     hh_node_t ** hashtable;
+     wsheap_t *   heap;
+     heavyhitters_release release;
      uint32_t     seed;
 } heavyhitters_t;
 
+
 /* allocates & initializes queue memory */
 static inline heavyhitters_t* heavyhitters_init(uint64_t max, size_t data_size,
-                                                heavyhitters_callback release)
+                                                heavyhitters_release release)
 {
      heavyhitters_t * hh = (heavyhitters_t*)calloc(1, sizeof(heavyhitters_t));
-
      hh->max = max;
      hh->data_size = data_size;
-     hh->node_data_size = sizeof(hh_node_t) + data_size;
-     hh->buffer = (void *)calloc(max, hh->node_data_size);
-     if (!hh->buffer) {
+     
+     hh->heap = wsheap_init(max, sizeof(hh_node_t) + data_size,
+                            hh_node_compair,
+                            hh_node_replace,
+                            hh);
+     if (!hh->heap) {
           free(hh);
-          error_print("unable to allocate heavy hitters buffer");
+          error_print("unable to allocate heavy hitters heap");
           return NULL;
      }
      hh->hashtable = (hh_node_t**)calloc(max, sizeof(hh_node_t*));
      if (!hh->hashtable) {
-          free(hh->buffer);
+          wsheap_destroy(hh->heap);
           free(hh);
           error_print("unable to allocate heavy hitters hashtable");
           return NULL;
@@ -113,21 +127,41 @@ static inline heavyhitters_t* heavyhitters_init(uint64_t max, size_t data_size,
      return hh;
 }
 
-static inline int hh_release_all(heavyhitters_t * hh) {
-     if (!hh) {
-          return 0;
+static inline void hh_release_all(heavyhitters_t * hh) {
+     uint64_t count = hh->heap->count;
+     if (!count) {
+          return;
+     }
+     void ** list = hh->heap->heap;
+     if (!list) {
+          return;
      }
      //do callback to release old data
-     if (hh->count && hh->release) {
-          uint64_t i;
-          for (i = 0; i < hh->count; i++) {
-               void * pos = hh->buffer + i * hh->node_data_size;
-               void * data = pos + sizeof(hh_node_t);
-               hh->release(data);
-          }
+     uint64_t i;
+     for (i = 0; i < count; i++) {
+          hh_node_t * node = (hh_node_t*)list[i];
+          hh->release(node->data);
      }
-     return 1;
+     return;
+}
 
+//the following sort destroys heavyhitters table tracking..
+//must call reset or destroy after done with sorted list
+static inline hh_node_t** heavyhitters_sort(heavyhitters_t * hh,
+                                            uint64_t max,
+                                            uint64_t * count) {
+     wsheap_sort_inplace(hh->heap);
+     if (!count) {
+          error_print("must have counter for sort");
+          return NULL;
+     }
+     if (max > hh->heap->count) {
+          *count = hh->heap->count;
+     }
+     else {
+          *count = max;
+     }
+     return (hh_node_t**)hh->heap->heap;
 }
 
 // reset data structures back to empty
@@ -137,15 +171,11 @@ static inline int heavyhitters_reset(heavyhitters_t * hh) {
           return 0;
      }
      hh_release_all(hh);
+     wsheap_reset(hh->heap);
+
      if (hh->hashtable) {
           memset(hh->hashtable, 0, sizeof(hh_node_t*) * hh->max);
      }
-     if (hh->buffer) {
-          memset(hh->buffer, 0, hh->max * hh->node_data_size);
-     }
-     hh->count = 0;
-     hh->q_head = NULL;
-     hh->q_tail = NULL;
 
      return 1;
 }
@@ -157,86 +187,16 @@ static inline int heavyhitters_destroy(heavyhitters_t * hh) {
           return 0;
      }
      hh_release_all(hh);
+     wsheap_destroy(hh->heap);
+     
      if (hh->hashtable) {
           free(hh->hashtable);
-     }
-     if (hh->buffer) {
-          free(hh->buffer);
      }
 
      free(hh);
 
      return 1;
 }
-
-//remove node from list to be placed elsewhere
-static inline void hh_q_release(heavyhitters_t * hh, hh_node_t *node) {
-     dprint("q_release");
-
-     if (hh->q_head == node) {
-          hh->q_head = node->q_next;
-     }
-     if (hh->q_tail == node) {
-          hh->q_tail = node->q_prev;
-     }
-     if (node->q_prev) {
-          node->q_prev->q_next = node->q_next;
-     }
-     if (node->q_next) {
-          node->q_next->q_prev = node->q_prev;
-     }
-
-     node->q_prev = NULL;
-     node->q_next = NULL;
-}
-
-//insert node after cursor
-static inline void hh_q_insert_after(heavyhitters_t * hh,
-                                     hh_node_t *cursor,
-                                     hh_node_t * node) {
-     dprint("q_insert_after");
-     hh_node_t * next = cursor->q_next;
-     cursor->q_next = node;
-     node->q_prev = cursor;
-     node->q_next = next;
-     if (next) {
-          next->q_prev = node;
-     }
-     else {
-          hh->q_tail = node;
-     }
-}
-
-//maintain priority queue
-static inline void hh_queue_sort(heavyhitters_t * hh, hh_node_t * node) {
-     dprint("q_sort");
-     if (!node->q_prev || (node->q_prev->value >= node->value)) {
-          //nothing to be done
-          return;
-     }
-     //release node from list...
-     hh_node_t * prev = node->q_prev;
-     hh_q_release(hh, node); 
-
-     //find place to insert
-     hh_node_t * cursor;
-     for (cursor = prev->q_prev; cursor; cursor = cursor->q_prev) {
-          if (cursor->value >= node->value) {
-               hh_q_insert_after(hh, cursor, node);
-               return;
-          }
-     }
-     //insert at head
-     hh_node_t * next = hh->q_head;
-     hh->q_head = node;
-     node->q_next = next;
-     if (next) {
-          next->q_prev = node;
-     }
-     else {
-          hh->q_tail = node;
-     }
-} 
 
 static inline void hh_hashtable_detach(heavyhitters_t * hh, hh_node_t * node) {
      dprint("ht_detach");
@@ -261,7 +221,8 @@ static inline void hh_hashtable_attach(heavyhitters_t * hh, hh_node_t * node,
      dprint("ht_attach");
      if (!hh->hashtable[hindex]) {
           hh->hashtable[hindex] = node;
-          dprint("node %"PRIx64" hashtable %"PRIx64, (uint64_t)node, (uint64_t)hh->hashtable[hindex]);
+          dprint("node %"PRIx64" hashtable %"PRIx64, (uint64_t)node,
+                 (uint64_t)hh->hashtable[hindex]);
      }
      else {
           hh->hashtable[hindex]->ht_prev = node;
@@ -269,6 +230,33 @@ static inline void hh_hashtable_attach(heavyhitters_t * hh, hh_node_t * node,
           hh->hashtable[hindex] = node;
      }
 }
+
+//called to replace existing with new value/data
+static void hh_node_replace(void * vnode, void * vreplace, void * vhh) {
+     hh_node_t * node = (hh_node_t*)vnode;
+     hh_node_t * replace = (hh_node_t*)vreplace;
+     heavyhitters_t * hh = (heavyhitters_t *) vhh;
+
+     //if not empty...
+     //remove from hashtable
+     if (node->value) {
+          if (hh->release) {
+               hh->release((void *)node->data);
+          }
+          //reset data buffer
+          memset(node->data, 0, sizeof(hh->data_size));
+
+          hh_hashtable_detach(hh, node);
+
+          //set old value
+          node->starting_value = node->value;
+     }
+           
+     node->key = replace->key;
+     node->value += replace->value;
+     hh_hashtable_attach(hh, node, replace->key % hh->max);
+}
+
 
 //returns data at increment position
 static inline hh_node_t * heavyhitters_increment(heavyhitters_t * hh,
@@ -283,77 +271,25 @@ static inline hh_node_t * heavyhitters_increment(heavyhitters_t * hh,
      uint64_t hindex = key % hh->max;
      dprint("key %"PRIx64" hindex %"PRIu64, key, hindex);
      
-     hh_node_t * node = NULL;
      hh_node_t * cursor = hh->hashtable[hindex];
 
-     dprint("find key in hashtable");
+     dprint("find key in hashtable %"PRIx64, (uint64_t) cursor);
      for (;cursor; cursor = cursor->ht_next) {
-          dprint("table %"PRIx64", cursor %"PRIx64", next %"PRIx64", buffer %"PRIx64,
-                 (uint64_t)hh->hashtable[hindex], (uint64_t)cursor,
-                 (uint64_t)cursor->ht_next, (uint64_t)hh->buffer);
+          dprint("cursor is %"PRIx64, (uint64_t) cursor);
+          dprint("cursor->ht_next is %"PRIx64, (uint64_t) cursor->ht_next);
           if (cursor->key == key) {
                dprint("found key at cursor%"PRIx64, (uint64_t)cursor);
                //found key
                cursor->value += value;
-               hh_queue_sort(hh, cursor);
-
-               return cursor;
+               return (hh_node_t*)wsheap_update(hh->heap, cursor);
           }
      }
 
-     //key not found, check if space left
-     dprint("check space");
-     if (hh->count < hh->max) {
-          //add new data position
-          node = hh->buffer + (hh->count * hh->node_data_size);
-          hh->count++;
+     hh_node_t node;
+     node.value = value;
+     node.key = key;
 
-          node->key = key;
-          node->value = value;
-
-          //attach node to hashtable...
-          hh_hashtable_attach(hh, node, hindex);
-     
-          //attach node to priority queue
-          if (!hh->q_head) {
-               hh->q_head = node;
-               hh->q_tail = node;
-          }
-          else {
-               //attach to tail..
-               hh->q_tail->q_next = node;
-               node->q_prev = hh->q_tail;
-               hh->q_tail = node;
-               hh_queue_sort(hh, node);
-          }
-
-     }
-     else {
-          dprint("recycle");
-          //recycle smallest record in table position
-          assert(hh->q_tail != NULL);
-          node = hh->q_tail;
-
-          //do callback to release old data
-          if (hh->release) {
-               hh->release((void *)node->data);
-          }
-          //reset data buffer
-          memset(node->data, 0, sizeof(hh->data_size));
-
-          hh_hashtable_detach(hh, node);
-           
-          node->key = key;
-          hh_hashtable_attach(hh, node, hindex);
-          
-          //set old value
-          node->starting_value = node->value;
-          node->value += value;
-
-          //sort queue
-          hh_queue_sort(hh, node);
-     }
-     return node;
+     return (hh_node_t*)wsheap_insert_replace(hh->heap, &node);
 }
 
 #ifdef __cplusplus

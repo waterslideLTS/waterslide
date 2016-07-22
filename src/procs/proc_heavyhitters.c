@@ -208,8 +208,8 @@ int proc_init(wskid_t * kid, int argc, char ** argv, void ** vinstance, ws_sourc
           return 0;
      }
      if (proc->max_out > proc->max_buffers) {
-          proc->max_out = proc->max_buffers;
-          tool_print("limited to %"PRIu64" elements to track", proc->max_buffers);
+          proc->max_buffers = proc->max_out;
+          tool_print("setting buffers to %"PRIu64" elements", proc->max_buffers);
      }
 
      proc->hitters = heavyhitters_init(proc->max_buffers, sizeof(key_data_t),
@@ -244,6 +244,9 @@ proc_process_t proc_input_set(void * vinstance, wsdatatype_t * meta_type,
 
 static inline void add_member(proc_instance_t * proc, wsdata_t * tdata,
                               wsdata_t * key, uint64_t value) {
+     if (value == 0) {
+          return;
+     }
      ws_hashloc_t * hashloc = key->dtype->hash_func(key);
      if (!hashloc || !hashloc->len) {
           return;
@@ -252,6 +255,10 @@ static inline void add_member(proc_instance_t * proc, wsdata_t * tdata,
      hh_node_t * node = heavyhitters_increment(proc->hitters, hashloc->offset,
                                                hashloc->len, value);
 
+     if (!node) {
+          dprint("node not found");
+          return;
+     }
      key_data_t * kdata = (key_data_t*)node->data;
      if (kdata) {
           if (kdata->wsd && proc->swap_lastkey) {
@@ -317,18 +324,17 @@ static int proc_flush(void * vinstance, wsdata_t* input_data,
      //tool_print("flushing heavy hitters");
      proc->flushes++;
 
-     uint64_t cnt = 0;
-     dprint("flushing %"PRIu64, proc->hitters->count);
      if (proc->flush_once && (proc->flushes > 1)) {
           heavyhitters_reset(proc->hitters);
           return 0;
      }
+     uint64_t count = 0;
+     hh_node_t ** list = heavyhitters_sort(proc->hitters, proc->max_out, &count);
+     dprint("flushing %"PRIu64, count);
 
-     hh_node_t * cursor;
-     for (cursor = proc->hitters->q_head;
-          cursor && (cnt < proc->max_out);
-          cursor = cursor->q_next) {
-          cnt++;
+     uint64_t i;
+     for (i = 0; i < count; i++) {
+          hh_node_t *cursor = list[i];
 
           key_data_t * kdata = (key_data_t*)cursor->data;
           if (kdata && kdata->wsd) {
