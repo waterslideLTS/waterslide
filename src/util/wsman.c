@@ -501,15 +501,17 @@ int check_kid_documentation(FILE * fp, const char *spath, char *kid)  {
           // verify that this variable exists 
           // check for procbuffer kid
           int * is_procbuffer = (int *)dlsym(sh_file_handle,"is_procbuffer");
+	  char ** itypes;
           if (!is_procbuffer) {
-               char ** itypes = (char**)dlsym(sh_file_handle,"proc_input_types"); 
+               itypes = (char**)dlsym(sh_file_handle,"proc_input_types"); 
                check_kid_field_double_dereference(fp, "proc_input_types", itypes, 0);
           }
 
           // verify that this variable exists 
           // check for procbuffer kid
+	  char ** otypes;
           if (!is_procbuffer) {
-               char ** otypes = (char**)dlsym(sh_file_handle,"proc_output_types");
+               otypes = (char**)dlsym(sh_file_handle,"proc_output_types");
                check_kid_field_double_dereference(fp, "proc_output_types", otypes, 0);
           }
 
@@ -594,10 +596,10 @@ int print_module_help_rst(FILE * fp, const char *spath) {
           char ** otypes;
           // check for procbuffer kid
           int * is_procbuffer = (int *)dlsym(sh_file_handle,"is_procbuffer");
+	  char * proc_input_types[] = {"tuple", "monitor", NULL};
+	  char * proc_output_types[] = {"tuple", NULL};
           if (is_procbuffer) {
-               char * proc_input_types[] = {"tuple", "monitor", NULL};
                itypes = (char**)proc_input_types;
-               char * proc_output_types[] = {"tuple", NULL};
                otypes = (char**)proc_output_types;
           }
           else {
@@ -839,11 +841,11 @@ int print_module_help_plain(FILE * fp, const char *spath) {
           char ** otypes;     
           // check for procbuffer kid
           int * is_procbuffer = (int *) dlsym(sh_file_handle,"is_procbuffer");
+	  char * proc_input_types[] = {"tuple", "monitor", NULL};
+	  char * proc_output_types[] = {"tuple", NULL};
           if (is_procbuffer) {
-               char * proc_input_types[] = {"tuple", "monitor", NULL};
                itypes = (char**)proc_input_types;
 
-               char * proc_output_types[] = {"tuple", NULL};
                otypes = (char**)proc_output_types;
           } 
           else {
