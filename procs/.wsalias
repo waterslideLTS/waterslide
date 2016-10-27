@@ -58,6 +58,8 @@ heavyhitters: heavyhitters
 heavyhitters: heavyhitters
 jointuple: join, jointuples
 jointuple: join, jointuples
+kafka_in: kafka_in
+kafka_in: kafka_in
 keeplast: lastvalue
 keeplast: lastvalue
 keepn: keepn
