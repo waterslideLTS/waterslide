@@ -57,15 +57,15 @@ char proc_version[]     = "1.1";
 char *proc_tags[]     = { "source", "input", NULL };
 char *proc_alias[]     = { NULL };
 char proc_name[]       = PROC_NAME;
-char proc_purpose[]    = "reads in buffers from kafka streams";
-
+char proc_purpose[]    = "single topic kafka subscriber";
+char proc_nonswitch_opts[] = "kafka topic to listen";
 proc_option_t proc_opts[] = {
      /*  'option character', "long option string", "option argument",
 	 "option description", <allow multiple>, <required>*/
-     {'b',"","brokers",
-     "Specify a string of brokers",0,0},
-     {'p',"","partitions",
-     "Specify a set of partitons",0,0},
+     {'b',"","broker",
+     "Specify a host and port for broker",0,0},
+     {'p',"","partition",
+     "Specify partiton for topic",0,0},
      {'L',"","label",
      "Specify an output label default DATA",0,0},
      {'S',"","",
@@ -85,10 +85,11 @@ typedef struct _proc_instance_t {
      ws_outtype_t * outtype_tuple;
      char * tasks;
      char * brokers;
-     char * partitions;
+     int partition;
+     char * topic;
      wslabel_t * label_buf;
      wslabel_t * label_tuple;
-     wslabel_t * label_topics;
+     wslabel_t * label_topic;
      wslabel_t * label_datetime;
 
      rd_kafka_t *rk;
@@ -96,10 +97,10 @@ typedef struct _proc_instance_t {
 	rd_kafka_topic_conf_t *topic_conf;
 	rd_kafka_queue_t *rkqu;
 	rd_kafka_topic_t *rkt;
-	rd_kafka_topic_partition_list_t *topics;
 	char errstr[512];
      ws_doutput_t * dout;
 
+     wsdata_t * wsd_topic;
      int stringdetect;
 } proc_instance_t;
 
@@ -108,15 +109,15 @@ static int proc_cmd_options(int argc, char ** argv,
 
      int op;
 
-     while ((op = getopt(argc, argv, "Sb:P:L:")) != EOF) {
+     while ((op = getopt(argc, argv, "Sb:p:L:")) != EOF) {
           switch (op) {
           case 'b':
                proc->brokers = optarg;
-               tool_print("using brokers: %s", optarg);
+               tool_print("using broker: %s", optarg);
                break;
-          case 'P':
-               proc->partitions = optarg;
-               tool_print("using partition: %s", optarg);
+          case 'p':
+               proc->partition = atoi(optarg);
+               tool_print("using partition: %d", proc->partition);
                break;
           case 'L':
                proc->label_buf = wsregister_label(type_table, optarg);
@@ -130,10 +131,8 @@ static int proc_cmd_options(int argc, char ** argv,
      }
 
      while (optind < argc) {
-          rd_kafka_topic_partition_list_add(proc->topics, argv[optind],
-                                            RD_KAFKA_PARTITION_UA);
-
-          tool_print("reading from only topics %s", argv[optind]);
+          proc->topic = strdup(argv[optind]);
+          tool_print("reading from topic %s", argv[optind]);
           optind++;
      }
 
@@ -169,7 +168,7 @@ int proc_init(wskid_t * kid, int argc, char ** argv, void ** vinstance, ws_sourc
 
      proc->label_buf = wsregister_label(type_table, "BUF");
      proc->label_tuple = wsregister_label(type_table, "KAFKA");
-     proc->label_topics = wsregister_label(type_table, "TASK");
+     proc->label_topic = wsregister_label(type_table, "TOPIC");
      proc->label_datetime = wsregister_label(type_table, "DATETIME");
 
      proc->conf = rd_kafka_conf_new();
@@ -197,16 +196,23 @@ int proc_init(wskid_t * kid, int argc, char ** argv, void ** vinstance, ws_sourc
 	rd_kafka_topic_conf_set(proc->topic_conf, "auto.offset.reset", "earliest",
                              NULL, 0);
 
-	proc->topics = rd_kafka_topic_partition_list_new(1);
-
      proc->brokers = "localhost:9092";
 
      //read in command options
      if (!proc_cmd_options(argc, argv, proc, type_table)) {
           return 0;
      }
-
-	char * topic = proc->topics->elems[0].topic;
+     if (!proc->topic) {
+          tool_print("ERROR: kafka topic needs to be specified");
+          return 0;
+     }
+     proc->wsd_topic = wsdata_create_string(proc->topic, strlen(proc->topic));
+     if (!proc->wsd_topic) {
+          tool_print("unable to create topic");
+          return 0;
+     }
+     wsdata_add_reference(proc->wsd_topic);
+     wsdata_add_label(proc->wsd_topic, proc->label_topic);
 
      /* Create Kafka handle */
      if (!(proc->rk = rd_kafka_new(RD_KAFKA_CONSUMER, proc->conf,
@@ -214,34 +220,29 @@ int proc_init(wskid_t * kid, int argc, char ** argv, void ** vinstance, ws_sourc
           fprintf(stderr,
                   "%% Failed to create Kafka consumer: %s\n",
                   proc->errstr);
-          exit(1);
+          return 0;
      }
 
      /* Add broker(s) */
      if (rd_kafka_brokers_add(proc->rk, proc->brokers) < 1) {
           fprintf(stderr, "%% No valid brokers specified\n");
-          exit(1);
+          return 0;
      }
 
      /* Create topic to consume from */
-     proc->rkt = rd_kafka_topic_new(proc->rk, topic, proc->topic_conf);
+     proc->rkt = rd_kafka_topic_new(proc->rk, proc->topic, proc->topic_conf);
 
      /* Start consuming */
      proc->rkqu = rd_kafka_queue_new(proc->rk);
-     tool_print("partions not done yet - using parition 0");
-     proc->partitions = NULL;
-     if (!proc->partitions) {
-          const int r = rd_kafka_consume_start_queue(proc->rkt,
-                                                     0, start_offset, proc->rkqu);
+     tool_print("using parition %d", proc->partition);
+     const int r = rd_kafka_consume_start_queue(proc->rkt,
+                                                proc->partition, start_offset, proc->rkqu);
 
-          if (r == -1) {
-               fprintf(stderr, "%% Error creating queue: %s\n",
-                       rd_kafka_err2str(rd_kafka_errno2err(errno)));
-               exit(1);
-          }
+     if (r == -1) {
+          fprintf(stderr, "%% Error creating queue: %s\n",
+                  rd_kafka_err2str(rd_kafka_errno2err(errno)));
+          return 0;
      }
-
-
 
      proc->outtype_tuple =
           ws_register_source_byname(type_table, "TUPLE_TYPE", data_source, sv);
@@ -300,6 +301,7 @@ static void msg_consume (rd_kafka_message_t *rkmessage, void *vproc) {
           if (!tuple) {
                return;
           }
+          add_tuple_member(tuple, proc->wsd_topic);
           if (proc->stringdetect) {
                int isbinary = 0;
                int i;
@@ -364,6 +366,28 @@ int proc_destroy(void * vinstance) {
      tool_print("meta_proc cnt %" PRIu64, proc->meta_process_cnt);
      tool_print("output cnt %" PRIu64, proc->outcnt);
 
+     if (proc->rkt) {
+          tool_print("kafka stopping consumer");
+          int r = rd_kafka_consume_stop(proc->rkt, proc->partition);
+
+          if (r != 0) {
+               fprintf(stderr, "%% Error: %s\n",
+                       rd_kafka_err2str(rd_kafka_errno2err(errno)));
+          }
+     }
+     if (proc->rkqu) {
+          rd_kafka_queue_destroy(proc->rkqu);
+     }
+     if (proc->rk) {
+          rd_kafka_destroy(proc->rk);
+     }
+     /* Let background threads clean up and terminate cleanly. */
+     tool_print("kafka listener destroy");
+     rd_kafka_wait_destroyed(2000);
+
+     if (proc->wsd_topic) {
+          wsdata_delete(proc->wsd_topic);
+     }
      //free dynamic allocations
      free(proc);
      return 1;

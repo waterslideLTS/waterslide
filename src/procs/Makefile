@@ -99,14 +99,14 @@ proc_re2$(WS_SFX): proc_re2.cc
 	@echo " not building $@, unset NORE2 to build"
 endif
 
-ifdef KAFKA
+ifdef HASRDKAFKA
 proc_kafka_in$(WS_SFX): proc_kafka_in.c
 	$(SHOWFILE) 
 	$(CC) $(CFLAGS) $< -o $@ -lrdkafka $(LDFLAGS)
 	$(INSTALL) $@ $(WS_PROCS_DIR)
 else
 proc_kafka_in$(WS_SFX): proc_kafka_in.c
-	@echo " not building $@, set KAFKA to build"
+	@echo " not building $@, need librdkafka, set HASRDKAFKA=1 to build"
 endif
 
 
