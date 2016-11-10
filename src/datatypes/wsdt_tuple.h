@@ -726,7 +726,7 @@ static inline wsdt_string_t * tuple_create_string(wsdata_t * tdata,
 
 static inline wsdata_t * tuple_dupe_string(wsdata_t * tdata,
                                                   wslabel_t * label,
-                                                  char * dupeme,
+                                                  const char * dupeme,
                                                   int len) {
      wsdata_t * wsd = tuple_create_string_wsdata(tdata, label, len);
      if (wsd) {
@@ -821,7 +821,7 @@ static inline wsdt_string_t * tuple_create_string_mlabel(wsdata_t * tdata,
 
 static inline wsdata_t * tuple_dupe_binary(wsdata_t * tdata,
                                            wslabel_t * label,
-                                           char * dupeme,
+                                           const char * dupeme,
                                            int len) {
      wsdata_t * wsd = tuple_create_binary_wsdata(tdata, label, len);
      if (wsd) {
