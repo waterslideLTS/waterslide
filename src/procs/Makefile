@@ -99,6 +99,23 @@ proc_re2$(WS_SFX): proc_re2.cc
 	@echo " not building $@, unset NORE2 to build"
 endif
 
+ifdef HASRDKAFKA
+proc_kafka_in$(WS_SFX): proc_kafka_in.c
+	$(SHOWFILE) 
+	$(CC) $(CFLAGS) $< -o $@ -lrdkafka $(LDFLAGS)
+	$(INSTALL) $@ $(WS_PROCS_DIR)
+proc_kafka_multi_in$(WS_SFX): proc_kafka_multi_in.c
+	$(SHOWFILE) 
+	$(CC) $(CFLAGS) $< -o $@ -lrdkafka $(LDFLAGS)
+	$(INSTALL) $@ $(WS_PROCS_DIR)
+else
+proc_kafka_in$(WS_SFX): proc_kafka_in.c
+	@echo " not building $@, need librdkafka, set HASRDKAFKA=1 to build"
+proc_kafka_multi_in$(WS_SFX): proc_kafka_multi_in.c
+	@echo " not building $@, need librdkafka, set HASRDKAFKA=1 to build"
+endif
+
+
 ifndef WS_PARALLEL
 # These implement fanout, and so are only useful for pthreads
 proc_workbalance$(WS_SFX): proc_workbalance.c

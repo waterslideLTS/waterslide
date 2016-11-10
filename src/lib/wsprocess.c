@@ -208,6 +208,7 @@ int ws_execute_graph(mimo_t * mimo) {
                wsdata_delete(data);
           }
      }
+     /****  removed unused code for monitoring
      for (cursor = mimo->proc_monitors; cursor; cursor = cursor->next) {
 #ifdef WS_PTHREADS
           if (cursor->pinstance->thread_id != nrank) continue;
@@ -225,6 +226,8 @@ int ws_execute_graph(mimo_t * mimo) {
                WSPERF_TIME(cursor->pinstance->kid.uid-1);
           }
      }
+     *****/
+
 
 
 #ifdef WS_PTHREADS
