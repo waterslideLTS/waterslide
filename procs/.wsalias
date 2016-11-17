@@ -42,6 +42,8 @@ equal: equal
 equal: equal
 exactmatch: ematch
 exactmatch: ematch
+exec_in: exec_in
+exec_in: exec_in
 file_in: file_in
 file_in: file_in
 fillmissing: fillmissing
