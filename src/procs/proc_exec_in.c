@@ -62,6 +62,8 @@ proc_option_t proc_opts[] = {
           "separator for input (default:newline)",0,0},
      {'I',"","",
           "include separator in output",0,0},
+     {'S',"","",
+          "detect ascii strings",0,0},
      {'L',"","",
           "label of input",0,0},
      //the following must be left as-is to signify the end of the array
@@ -94,6 +96,7 @@ typedef struct _proc_instance_t {
      wslabel_t * label_out;
 
      int isdone;
+     int detect_strings;
 
      struct pollfd fds[1];
 
@@ -115,8 +118,11 @@ static int proc_cmd_options(int argc, char ** argv,
 
      int op;
 
-     while ((op = getopt(argc, argv, "IL:R:")) != EOF) {
+     while ((op = getopt(argc, argv, "SIL:R:")) != EOF) {
           switch (op) {
+          case 'S':
+               proc->detect_strings = 1;
+               break;
           case 'I':
                proc->include_sep = 1;
                break;
@@ -347,8 +353,14 @@ static int aggregate_output(proc_instance_t * proc,
      }
      wsdata_t * tuple = wsdata_alloc(dtype_tuple);
      if (tuple) {
-          tuple_member_create_dep_binary(tuple, agg, proc->label_out,
-                                         agg_buf, agglen);
+          if (proc->detect_strings) {
+               tuple_member_create_dep_strdetect(tuple, agg, proc->label_out,
+                                                 agg_buf, agglen);
+          }
+          else {
+               tuple_member_create_dep_binary(tuple, agg, proc->label_out,
+                                              agg_buf, agglen);
+          }
 
           ws_set_outdata(tuple, proc->outtype_tuple, dout);     
           proc->outcnt++;
