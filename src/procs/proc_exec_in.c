@@ -40,6 +40,7 @@
 #include <poll.h>
 #include <sys/types.h>
 #include <sys/wait.h>
+#include <limits.h>
 #include "waterslide.h"
 #include "waterslidedata.h"
 #include "procloader.h"
@@ -71,7 +72,7 @@ proc_option_t proc_opts[] = {
           "",0,0}
 };
 
-#define EXEC_BUF_MAX 2048
+#define EXEC_BUF_MAX PIPE_BUF
 
 //function prototypes for local functions
 static int data_source_exec(void *, wsdata_t*, ws_doutput_t*, int);
