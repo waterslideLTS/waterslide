@@ -109,8 +109,6 @@ typedef struct _proc_instance_t {
      uint64_t outerkeys;
      uint64_t datums;
      int twolevel;
-     char * outfile;
-     char * outer_file;
      char * open_table;
      char * open_table5;
 
@@ -149,16 +147,10 @@ static int proc_cmd_options(int argc, char ** argv,
                // loading of the key table is postponed to the stringhash5_create_shared_sht
                // call in proc_init
                break;
-          case 'O':
-               proc->outfile = strdup(optarg);
-               break;
           case 'L':
                proc->open_table5 = strdup(optarg);
                // loading of the outer table is postponed to the stringhash5_create_shared_sht
                // call in proc_init
-               break;
-          case 'P':
-               proc->outer_file = strdup(optarg);
                break;
           default:
                return 0;
@@ -511,36 +503,6 @@ static int proc_string_twolevel(void * vinstance, wsdata_t* input_data,
      return 1;
 }
 
-static void serialize_table(proc_instance_t * proc) {
-     if (proc->outfile && (!proc->sharelabel || !proc->sharer_id)) {
-	  tool_print("Writing data table to %s", proc->outfile);
-          FILE * fp = fopen(proc->outfile, "w");
-	  if (fp) {
-	       stringhash5_dump(proc->key_table, fp);
-	       fclose(fp);
-	  }
-          else {
-               perror("failed writing data table");
-               tool_print("unable to write to file %s", proc->outfile);
-          }
-     }
-}
-
-static void serialize_outer_table(proc_instance_t * proc) {
-     if (proc->outer_file && (!proc->sharelabel5 || !proc->sharer_id5)) {
-	  tool_print("Writing outer data table to %s", proc->outer_file);
-          FILE * fp = fopen(proc->outer_file, "w");
-	  if (fp) {
-	       stringhash5_dump(proc->outer_table, fp);
-	       fclose(fp);
-	  }
-          else {
-               perror("failed writing outer data table");
-               tool_print("unable to write to file %s", proc->outer_file);
-          }
-     }
-}
-
 //return 1 if successful
 //return 0 if no..
 int proc_destroy(void * vinstance) {
@@ -566,18 +528,19 @@ int proc_destroy(void * vinstance) {
      }
 
      //destroy tables
-     serialize_table(proc);
-     stringhash5_destroy(proc->key_table);
+     if (proc->sharer_id == 0) {
+          stringhash5_destroy(proc->key_table);
+     }
+
      if (proc->twolevel) {
-          serialize_outer_table(proc);
+          if (proc->sharer_id5 == 0) {
           stringhash5_destroy(proc->outer_table);
+          }
      }
 
      //free dynamic allocations
      free(proc->sharelabel);
      free(proc->sharelabel5);
-     free(proc->outfile);
-     free(proc->outer_file);
      free(proc);
 
      return 1;
