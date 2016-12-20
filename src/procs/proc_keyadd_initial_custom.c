@@ -75,7 +75,7 @@ char proc_nonswitch_opts[]    = "";
 char *proc_input_types[]    = {"string", NULL};
 const char *proc_synopsis[]  =  { "keyadd_initial_custom [-J <SHT LABEL>] [-j <SHT5 LABEL>] [-2] [-m <NUMBER>] [-b <NUMBER>] [-M <NUMBER>]", NULL }; 
 
-#define LOCAL_MAX_SH5_TABLE 2000000
+#define LOCAL_MAX_SH5_TABLE 8000000
 
 typedef struct _key_data_t {
      uint32_t cnt;
