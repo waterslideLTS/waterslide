@@ -58,7 +58,7 @@ int generate_rst = 0;
 int tag_search = 0;
 int input_type_search = 0;
 int output_type_search = 0;
-int verbose = 0;
+int verbose = 1;
 
 FILE * outfp;
 map_t * map = NULL;
@@ -1648,7 +1648,7 @@ int main(int argc, char *argv[]) {
      build_alias_map(alias_path);
 
      int op;
-     while ((op = getopt(argc, argv, "rcsiotvVh?")) != EOF) {
+     while ((op = getopt(argc, argv, "rcsiotvVhmM?")) != EOF) {
           switch (op) {
                case 'c':
                     check_kid = 1;
@@ -1671,6 +1671,10 @@ int main(int argc, char *argv[]) {
                case 'v':
                case 'V':
                     verbose = 1;
+                    break;
+               case 'm':
+               case 'M':
+                    verbose = 0;
                     break;
                case 'h':
                case '?':

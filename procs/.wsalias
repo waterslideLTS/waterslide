@@ -112,6 +112,8 @@ rbsort: rbsort
 rbsort: rbsort
 re2: re2
 re2: re2
+redis: hiredis
+redis: hiredis
 removefromtuple: tupledelete, tupleremove
 removefromtuple: tupledelete, tupleremove
 sample: sample
