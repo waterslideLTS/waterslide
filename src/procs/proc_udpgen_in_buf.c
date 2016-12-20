@@ -252,7 +252,6 @@ static inline int try_shutdown(proc_instance_t * proc, char * buf, int buflen) {
 static inline int read_csv_udp(proc_instance_t * proc, ws_doutput_t * dout) {
      int plen;
      char * pbuf;
-     proc->meta_process_cnt++;
 
      wsdata_t * wsbuf = wsdata_create_buffer(MAXUDPBUF, &pbuf, &plen);
      if (!wsbuf) {
@@ -284,6 +283,8 @@ static inline int read_csv_udp(proc_instance_t * proc, ws_doutput_t * dout) {
                return 1;
           }
      }
+     proc->meta_process_cnt++;
+
      str->len = len;
 
      pbuf[len-1] = '\0';
