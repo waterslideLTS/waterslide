@@ -41,7 +41,7 @@ SOFTWARE.
 char proc_name[]               =  PROC_NAME;
 char proc_version[]            =  "1.0";
 char *proc_tags[]              =  {"Statistics", "Math", "Profiling", NULL};
-char *proc_alias[]             =  { "countkey", NULL };
+char *proc_alias[]             =  { "hiredis", NULL };
 char proc_purpose[]            =  "interact with redis database";
 char proc_description[]  = "Interact with redis database including "
      "GET, SET, DELETE, SUBSCRIBE, PUBLISH, INCREMENT, and DECREMENT. "
@@ -75,7 +75,7 @@ char proc_nonswitch_opts[]     =  "LABEL of key";
 char *proc_input_types[]       =  {"tuple", NULL};
 // (Potential) Output types: tuple
 char *proc_output_types[]      =  {"tuple", NULL};
-char proc_requires[]           =  "";
+//char proc_requires[]           =  "";
 // Ports: QUERYAPPEND
 proc_port_t proc_input_ports[] =  {
      {"none","Get value at key"},
@@ -86,10 +86,10 @@ proc_port_t proc_input_ports[] =  {
      {"PUBLISH","Publish value at specified channel"},
      {NULL, NULL}
 };
-char *proc_tuple_container_labels[] =  {NULL};
-char *proc_tuple_conditional_container_labels[] =  {NULL};
+//char *proc_tuple_container_labels[] =  {NULL};
+//char *proc_tuple_conditional_container_labels[] =  {NULL};
 char *proc_tuple_member_labels[] =  {"VALUE", NULL};
-char *proc_synopsis[]          =  {"redis <LABEL> -V VALUE ", NULL};
+char *proc_synopsis[]          =  {"[PORT]:redis <LABEL> [-V VALUE] [-h hostname] [-p port]", NULL};
 proc_example_t proc_examples[] =  {
      {"... | GET:redis WORD -L INFO | ...", "Queries redis server "
       "with the specified string in the WORD buffer; "
