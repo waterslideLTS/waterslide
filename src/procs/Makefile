@@ -127,6 +127,17 @@ proc_kafka_multi_in$(WS_SFX): proc_kafka_multi_in.c
 	@echo " not building $@, need librdkafka, set HASRDKAFKA=1 to build"
 endif
 
+ifdef HASREDIS
+proc_redis$(WS_SFX): proc_redis.c
+	$(SHOWFILE) 
+	$(CC) $(CFLAGS) $< -o $@ -lhiredis $(LDFLAGS)
+	$(INSTALL) $@ $(WS_PROCS_DIR)
+else
+proc_redis$(WS_SFX): proc_redis.c
+	@echo " not building $@, need libhiredis, set HASREDIS=1 to build"
+endif
+
+
 ifndef WS_PARALLEL
 # These implement fanout, and so are only useful for pthreads
 proc_workbalance$(WS_SFX): proc_workbalance.c
