@@ -40,7 +40,7 @@ SOFTWARE.
 
 char proc_name[]               =  PROC_NAME;
 char proc_version[]            =  "1.0";
-char *proc_tags[]              =  {"Statistics", "Math", "Profiling", NULL};
+char *proc_tags[]              =  {"Database", "Distributed", NULL};
 char *proc_alias[]             =  { "hiredis", NULL };
 char proc_purpose[]            =  "interact with redis database";
 char proc_description[]  = "Interact with redis database including "
