@@ -1648,6 +1648,7 @@ int main(int argc, char *argv[]) {
      build_alias_map(alias_path);
 
      int op;
+     int force_verbose = 0;
      while ((op = getopt(argc, argv, "rcsiotvVhmM?")) != EOF) {
           switch (op) {
                case 'c':
@@ -1671,6 +1672,7 @@ int main(int argc, char *argv[]) {
                case 'v':
                case 'V':
                     verbose = 1;
+                    force_verbose = 1;
                     break;
                case 'm':
                case 'M':
@@ -1692,6 +1694,10 @@ int main(int argc, char *argv[]) {
 
      argc -= optind;
      argv += optind;
+
+     if (!argc && !force_verbose) {
+          verbose = 0;
+     }
 
      if (argc > 0) {
           int x;
