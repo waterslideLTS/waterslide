@@ -20,7 +20,6 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
-//keeps count of keys.. keep a representative tuple for each key..
 
 #define PROC_NAME "redis"
 //#define DEBUG 1
@@ -44,9 +43,11 @@ char proc_version[]            =  "1.0";
 char *proc_tags[]              =  {"Statistics", "Math", "Profiling", NULL};
 char *proc_alias[]             =  { "countkey", NULL };
 char proc_purpose[]            =  "interact with redis database";
-char proc_description[]  = "Interact with redis database including " \
+char proc_description[]  = "Interact with redis database including "
      "GET, SET, DELETE, SUBSCRIBE, PUBLISH, INCREMENT, and DECREMENT. "
-     "This kid can act as a source for subscription events";
+     "This kid can act as a source for subscription events. One can use this "
+     "kid for interacting with other stream processing, for distributed "
+     "processing or for storing data into more permanent storage.";
 
 proc_option_t proc_opts[]      =  {
      /*  'option character', "long option string", "option argument",
@@ -60,7 +61,7 @@ proc_option_t proc_opts[]      =  {
      {'P',"","channel",
      "publish channel name",0,0},
      {'S',"","channel",
-     "subscription channel name",0,0},
+     "subscription channel name (blocking operation)",0,0},
      {'L',"","LABEL",
      "label of output value",0,0},
      {'x',"","seconds",
@@ -90,6 +91,27 @@ char *proc_tuple_conditional_container_labels[] =  {NULL};
 char *proc_tuple_member_labels[] =  {"VALUE", NULL};
 char *proc_synopsis[]          =  {"redis <LABEL> -V VALUE ", NULL};
 proc_example_t proc_examples[] =  {
+     {"... | GET:redis WORD -L INFO | ...", "Queries redis server "
+      "with the specified string in the WORD buffer; "
+      "labels any result as INFO."},
+     {"... | SET:redis WORD -V COUNT ", "Sets key and value in redis server "
+      "with the specified key string in the WORD buffer and specified value "
+      "string in COUNT buffer.; Has not output in this mode."},
+     {"... | SET:redis WORD -V COUNT -x 5m ", "Sets key and value in redis server "
+      "with the specified key string in the WORD buffer and specified value "
+      "string in COUNT buffer; Value in redis is held for only 5 minutes."},
+     {"... | INCR:redis WORD -L RESULT | ...", "Increments value at key in redis server "
+      "using the specified key string in the WORD buffer; "
+      "Resulting value after increment is labeled RESULT."},
+     {"... | DECR:redis WORD -L RESULT | ...", "Decrements value at key in redis server "
+      "using the specified key string in the WORD buffer;"
+      "Resulting value after decrement is labeled RESULT."},
+     {"... | PUBLISH:redis -P WordChannel VERB ADVERB | ...", "Publishes values in redis server "
+      "using the channel named WordChannel using value strings found in VERB and ADVERB; "
+      "input tuple is passed downstream as a passthrough operation."},
+     {"redis -S SubChannel -h redishost -p 12345 -L REDISOUT | ...",
+      "Subscribes to channel SubChannel in redis server found at host redishost and port 12345;"
+      "Any output strings are labeled RESIDOUT; This acts as source kid that blocks waiting for input."},
 	{NULL, NULL}
 };
 
@@ -124,7 +146,7 @@ static int proc_cmd_options(int argc, char ** argv,
                             proc_instance_t * proc, void * type_table) {
      int op;
 
-     while ((op = getopt(argc, argv, "V:L:h:p:P:S:v:")) != EOF) {
+     while ((op = getopt(argc, argv, "x:V:L:h:p:P:S:v:")) != EOF) {
           switch (op) {
           case 'V':
                wslabel_nested_search_build(type_table, &proc->nest_values, optarg);
@@ -396,9 +418,9 @@ static int proc_set(void * vinstance, wsdata_t * tuple,
                redisReply *reply;
 
                if (proc->expire_sec) {
-                    reply = redisCommand(proc->rc, "SET %b %b %d",
+                    reply = redisCommand(proc->rc, "SET %b %b EX %d",
                                          keybuf, keylen, valbuf, vallen,
-                                         proc->expire_sec);
+                                         (int)proc->expire_sec);
                }
                else {
                     dprint("setting %.*s %.*s", keylen, keybuf, vallen, valbuf);
@@ -410,8 +432,6 @@ static int proc_set(void * vinstance, wsdata_t * tuple,
                }
           }
      }
-     
-     ws_set_outdata(tuple, proc->outtype_tuple, dout);
 
      //always return 1 since we don't know if table will flush old data
      return 1;
