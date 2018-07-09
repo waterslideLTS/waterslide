@@ -72,4 +72,5 @@ else
 endif
 
 clean:
-	$(RM) -r *.dSYM *.o $(UTILS)
+	$(RM) *.o $(UTILS)
+	$(RM) -r *.dSYM

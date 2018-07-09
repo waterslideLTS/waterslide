@@ -18,14 +18,14 @@ endif
 
 #CFLAGS += $(WS_INCLUDE) $(WS_DEFS)
 CFLAGS += -Wno-unknown-pragmas -Wno-strict-aliasing
-LDFLAGS += -shared 
+LDFLAGS += -shared
 
 MODULES = $(patsubst %.c, %$(WS_SFX), $(wildcard *.c))
 MODULES += $(patsubst %.cc, %$(WS_SFX), $(wildcard *.cc))
 
-all: $(WS_PROCS_DIR) $(MODULES) 
+all: $(WS_PROCS_DIR) $(MODULES)
 
-$(WS_PROCS_DIR): 
+$(WS_PROCS_DIR):
 	$(MKDIR) $(WS_PROCS_DIR)
 
 #********
@@ -33,18 +33,18 @@ $(WS_PROCS_DIR):
 proc_calc$(WS_SFX): proc_calc.c $(WS_BUILDROOT)/include/wscalc.h
 
 proc_tcpcatch$(WS_SFX): proc_tcpcatch.c $(WS_BUILDROOT)/include/tcp_rw.h
-	$(SHOWFILE) 
+	$(SHOWFILE)
 	$(CC) $(CFLAGS) $< -o $@ $(LDFLAGS)
 	$(INSTALL) $@ $(WS_PROCS_DIR)
 
 proc_tcpthrow$(WS_SFX): proc_tcpthrow.c $(WS_BUILDROOT)/include/tcp_rw.h
-	$(SHOWFILE) 
+	$(SHOWFILE)
 	$(CC) $(CFLAGS) $< -o $@ $(LDFLAGS)
 	$(INSTALL) $@ $(WS_PROCS_DIR)
 
 ifdef HASMAGIC
 proc_filemagic$(WS_SFX): proc_filemagic.c
-	$(SHOWFILE) 
+	$(SHOWFILE)
 	$(CC) $(CFLAGS) $< -o $@ -lmagic $(LDFLAGS)
 	$(INSTALL) $@ $(WS_PROCS_DIR)
 else
@@ -62,25 +62,25 @@ ifndef NOPB
     PBLIB+= -L$(PBDIR)/lib -lprotobuf-lite -pthread -lpthread
   endif
 
-protobuf/wsserial.pb.cc: 
+protobuf/wsserial.pb.cc:
 	$(QUIET)$(MAKE) --no-print-directory -C protobuf
 
 proc_wsproto_in$(WS_SFX):proc_wsproto_in.cc protobuf/wsserial.pb.cc protobuf/wsproto.pb.cc
-	$(SHOWFILE) 
+	$(SHOWFILE)
 	$(CPP) $(PBFLAGS) $(CPPFLAGS) $^ -o $@ $(PBLIB) $(LDFLAGS)
 	$(INSTALL) $@ $(WS_PROCS_DIR)
 proc_wsproto_out$(WS_SFX): proc_wsproto_out.cc protobuf/wsserial.pb.cc protobuf/wsproto.pb.cc
-	$(SHOWFILE) 
+	$(SHOWFILE)
 	$(CPP) $(PBFLAGS) $(CPPFLAGS) $^ -o $@ $(PBLIB) $(LDFLAGS)
 	$(INSTALL) $@ $(WS_PROCS_DIR)
 proc_lastn$(WS_SFX): proc_lastn.c protobuf/wsproto.pb.cc
-	$(SHOWFILE) 
+	$(SHOWFILE)
 	$(CPP) $(PBFLAGS) $(CPPFLAGS) $^ -o $@ $(PBLIB) $(LDFLAGS)
 	$(INSTALL) $@ $(WS_PROCS_DIR)
 
 else
 proc_lastn$(WS_SFX): proc_lastn.c
-	$(SHOWFILE) 
+	$(SHOWFILE)
 	$(CC) $(CFLAGS) $< -o $@ $(LDFLAGS)
 	$(INSTALL) $@ $(WS_PROCS_DIR)
 proc_wsproto_in$(WS_SFX): proc_wsproto_in.cc
@@ -91,7 +91,7 @@ endif
 
 ifndef NORE2
 proc_re2$(WS_SFX): proc_re2.cc
-	$(SHOWFILE) 
+	$(SHOWFILE)
 	$(CPP) $(CPPFLAGS) -I$(RE2INCLUDE) $< -o $@ $(RE2LIB)/libre2.a $(LDFLAGS)
 	$(INSTALL) $@ $(WS_PROCS_DIR)
 else
@@ -113,11 +113,11 @@ endif
 
 ifdef HASRDKAFKA
 proc_kafka_in$(WS_SFX): proc_kafka_in.c
-	$(SHOWFILE) 
+	$(SHOWFILE)
 	$(CC) $(CFLAGS) $< -o $@ -lrdkafka $(LDFLAGS)
 	$(INSTALL) $@ $(WS_PROCS_DIR)
 proc_kafka_multi_in$(WS_SFX): proc_kafka_multi_in.c
-	$(SHOWFILE) 
+	$(SHOWFILE)
 	$(CC) $(CFLAGS) $< -o $@ -lrdkafka $(LDFLAGS)
 	$(INSTALL) $@ $(WS_PROCS_DIR)
 else
@@ -129,7 +129,7 @@ endif
 
 ifdef HASREDIS
 proc_redis$(WS_SFX): proc_redis.c
-	$(SHOWFILE) 
+	$(SHOWFILE)
 	$(CC) $(CFLAGS) $< -o $@ -lhiredis $(LDFLAGS)
 	$(INSTALL) $@ $(WS_PROCS_DIR)
 else
@@ -163,6 +163,7 @@ endif
 	$(INSTALL) $@ $(WS_PROCS_DIR)
 
 clean:
-	$(RM) *.o .*.swp *.dSYM ._* *.8 *_so 
+	$(RM) *.o .*.swp ._* *.8 *_so
+	$(RM) -r *.dSYM
 	$(QUIET)$(MAKE) --no-print-directory -C protobuf clean
 
