@@ -1,7 +1,7 @@
 
 # General project Makefile contents
 
-# Build verbosity 
+# Build verbosity
 #   Define WS_VERBOSEBUILD for verbose build
 
 # As this file (common.mk) is stored at .../src,
@@ -68,9 +68,9 @@ ifdef USEM64
 endif
 
 WS_INCLUDE = -I$(WS_BUILDROOT)/include -I$(WS_BUILDROOT) -I.
-LDFLAGS += -L$(WS_LIB_DIR) 
+LDFLAGS += -L$(WS_LIB_DIR)
 
-LDFLAGS += -lm -lrt -lz -lpthread  
+LDFLAGS += -lm -lz -lpthread
 
 ifndef WSLIB
   WSLIB=$(INSTALL_TARGET)/lib
@@ -84,15 +84,16 @@ ifndef OSNAME
   OSNAME = $(word 1,$(shell uname))
   ifndef OSNAME
     OSNAME = "unknown"
-  endif 
+  endif
 endif
 
 # Handle BSD a little differently
 
 ifeq "$(OSNAME)" "FreeBSD"
   NODL=1
-  ISFREEBSD=1
+  ISBSD=1
   OSNAME=LINUX
+  ISBSD=1
 endif
 
 ifndef NODL
@@ -102,7 +103,15 @@ endif
 # Other options: "SunOS", "Linux", "CYGWIN_NT-5.0", "Darwin"
 
 ifeq "$(OSNAME)" "Darwin"
-  CFLAGS += -bundle -undefined dynamic_lookup
+  CFLAGS += -undefined dynamic_lookup
+  ISBSD=1
+  ISDARWIN=1
+  WHOLE_ARCHIVE=-all_load
+  NO_WHOLE_ARCHIVE=-noall_load
+else
+  WHOLE_ARCHIVE=--whole-archive
+  NO_WHOLE_ARCHIVE=--no-whole-archive
+  LDFLAGS += -lrt
 endif
 
 # Tools
@@ -114,15 +123,15 @@ LINK = $(QUIET)ln -s
 AR = $(QUIET)ar
 RM = $(QUIET)rm -f
 IF = $(QUIET)if
-ifdef ISFREEBSD
-RMDIR = -$(QUIET)rmdir 
+ifdef ISBSD
+RMDIR = -$(QUIET)rmdir
 else
 RMDIR = $(QUIET)rmdir --ignore-fail-on-non-empty
 endif
 MKDIR = $(QUIET)mkdir -p
 TAR = $(QUIET)tar
 CD = $(QUIET)cd
-CP = $(QUIET)cp 
+CP = $(QUIET)cp
 LINK = $(QUIET)ln -s -f
 TOUCH = $(QUIET)touch
 FIND = $(QUIET)find

@@ -33,6 +33,8 @@ SOFTWARE.
 #include <glob.h>
 #if defined(__FreeBSD__)
 #include <sys/endian.h>
+#elif defined(__APPLE__)
+#include <machine/endian.h>
 #else
 #include <endian.h>
 #endif
@@ -158,7 +160,7 @@ static int get_next_file(proc_instance_t * proc);
 static int proc_binary(void *, wsdata_t*, ws_doutput_t*, int);
 static int data_source(void *, wsdata_t*, ws_doutput_t*, int);
 
-static int proc_cmd_options(int argc, char ** argv, 
+static int proc_cmd_options(int argc, char ** argv,
                              proc_instance_t * proc, void * type_table) {
 
      int op;
@@ -185,12 +187,12 @@ static int proc_cmd_options(int argc, char ** argv,
                return 0;
           }
      }
-    
+
      if(proc->stdin_data && proc->pass_file_meta) {
           error_print("cannot pass file metadata (-m) if reading content from stdin (-i)");
           return 0;
      }
- 
+
      return 1;
 }
 
@@ -291,7 +293,7 @@ static int get_next_file(proc_instance_t * proc) {
      proc->done = 1;
      return 0;
 }
-    
+
 
 // the following is a function to take in command arguments and initalize
 // this processor's instance..
@@ -317,9 +319,9 @@ int proc_init(wskid_t * kid, int argc, char ** argv, void ** vinstance, ws_sourc
 
      if(0 == proc->receivebinary) {
           if (proc->pass_file_meta) {
-               proc->label_file = wsregister_label(type_table, "PBFILENAME"); 
+               proc->label_file = wsregister_label(type_table, "PBFILENAME");
           }
-     
+
           if (proc->stdin_data) {
                int fd = fileno(stdin);
                proc->fp = gzdopen(fd, "r");
@@ -344,17 +346,17 @@ int proc_init(wskid_t * kid, int argc, char ** argv, void ** vinstance, ws_sourc
                return 0;
           }
      }
-     
+
 
      // init wsproto and pbmeta specifics
-     proc->pbuf = protobuf_init(type_table);  
+     proc->pbuf = protobuf_init(type_table);
 
      proc->formatid = 0; // set that there is no current format
 
      proc->wsproto = wsproto_init();
      proc->type_table = type_table;
 
-     return 1; 
+     return 1;
 }
 
 
@@ -381,7 +383,7 @@ proc_process_t proc_input_set(void * vinstance, wsdatatype_t * input_type,
      }
 
 
-     if (proc->receivebinary && wsdatatype_match(type_table, input_type, "BINARY_TYPE")) { 
+     if (proc->receivebinary && wsdatatype_match(type_table, input_type, "BINARY_TYPE")) {
           return proc_binary;
      }
 
@@ -399,7 +401,7 @@ static inline int read_next_record(proc_instance_t * proc, wsdata_t * tdata) {
      if (!proc->fp) {
           // since we are closing the file, mark the format as unknown.
           proc->formatid = 0;
-           
+
           if (proc->stdin_data) {
                return 0;
           }
@@ -412,7 +414,7 @@ static inline int read_next_record(proc_instance_t * proc, wsdata_t * tdata) {
 
      uint8_t read32bits = 0; // whether or not we've read in the first record length
      uint32_t init_mlen = 0; // the value of the record length (32 bits)
-     // if we haven't 
+     // if we haven't
      if(proc->formatid == 0) {
           if (gzread(proc->fp, &init_mlen, sizeof(uint32_t)) != sizeof(uint32_t)) {
                gzclose(proc->fp);
@@ -420,12 +422,12 @@ static inline int read_next_record(proc_instance_t * proc, wsdata_t * tdata) {
                return 1;
           }
           read32bits = 1;
-       
+
           // the length of a wsproto header is 4 bytes.  Because of the
           // ordering of the bytes, both 32 and 64 bit reads on the header
           // record length will always be 4.
           if(init_mlen == sizeof(uint16_t)*2) {
-               // set the supported format id and version for wsproto 
+               // set the supported format id and version for wsproto
                proc->formatid = WSPROTO_FORMAT_ID;
                proc->formatversion = WSPROTO_FORMAT_VERSION;
                proc->earliestsupportedformatversion = WSPROTO_EARLIEST_SUPPORTED_FORMAT_VERSION;
@@ -443,22 +445,22 @@ static inline int read_next_record(proc_instance_t * proc, wsdata_t * tdata) {
                if (!proc->suppress_output) {
                     tool_print("format: pbmeta");
                }
-          }          
+          }
           else {
                tool_print("Unsupported record length (%d)", init_mlen);
                return fail_read(proc);
           }
-     } 
+     }
 
      if(proc->formatid == WSPROTO_FORMAT_ID) {
           uint64_t mlen;
-          
+
           // read the length of the next record
           // if we already read 32 bits while detecting the file type, only read 32.
           if(read32bits == 1) {
                // if we've read 32 bits already, it was while trying to figure
-               // out the format id.  Since the header comes first, this 
-               // should be a header file and the remaining 32-bits should be 
+               // out the format id.  Since the header comes first, this
+               // should be a header file and the remaining 32-bits should be
                // 0's.  let's verify that.
                uint32_t init_mlen2;
                if (gzread(proc->fp, &init_mlen2, sizeof(uint32_t)) != sizeof(uint32_t)) {
@@ -518,7 +520,7 @@ static inline int read_next_record(proc_instance_t * proc, wsdata_t * tdata) {
                          return fail_read(proc);
                     }
                }
-               
+
                // TODO: segfault occurs on gzread call below if last file was a pbmeta file
                //if(proc->buf) {
                //     tool_print("buf is good");
@@ -592,14 +594,14 @@ static int proc_binary(void * vinstance, wsdata_t* source_data,
 
      wsdt_binary_t * bin = (wsdt_binary_t *)source_data->data;
 
-     uint32_t start_index_size = get_current_index_size(proc->type_table); 
+     uint32_t start_index_size = get_current_index_size(proc->type_table);
      int rtn = wsproto_tuple_readbuf(proc->wsproto, tdata, proc->type_table, bin->buf, bin->len);
      if (rtn == 1) {
           // get the size of the index so we can know later if it has changed
           wsdt_tuple_t * tuple = (wsdt_tuple_t*)tdata->data;
           if (tuple->len) {
                // get the end index size
-               uint32_t end_index_size = get_current_index_size(proc->type_table); 
+               uint32_t end_index_size = get_current_index_size(proc->type_table);
 
                if(start_index_size == end_index_size) {
                     // if the index size remained the same, write out the tuple
@@ -631,7 +633,7 @@ static int proc_binary(void * vinstance, wsdata_t* source_data,
           tool_print("unable to parse binary to tuple data");
           wsdata_delete(tdata);
      }
-     
+
      return 1;
 }
 //// proc processing function assigned to a specific data type in proc_io_init
@@ -647,7 +649,7 @@ static int data_source(void * vinstance, wsdata_t* source_data,
      }
 
      // get the size of the index so we can know later if it has changed
-     uint32_t start_index_size = get_current_index_size(proc->type_table); 
+     uint32_t start_index_size = get_current_index_size(proc->type_table);
      if (read_next_record(proc, source_data)) {
           wsdt_tuple_t * tuple = (wsdt_tuple_t*)source_data->data;
           if (tuple->len) {
@@ -656,9 +658,9 @@ static int data_source(void * vinstance, wsdata_t* source_data,
                if (proc->pass_file_meta && proc->file_wsd) {
                     add_tuple_member(source_data, proc->file_wsd);
                }
-               
+
                // get the end index size
-               uint32_t end_index_size = get_current_index_size(proc->type_table); 
+               uint32_t end_index_size = get_current_index_size(proc->type_table);
 
                if(start_index_size == end_index_size) {
                     // if the index size remained the same, write out the tuple
@@ -711,7 +713,7 @@ int proc_destroy(void * vinstance) {
      }
 
      //free dynamic allocations
-     protobuf_destroy(proc->pbuf);  
+     protobuf_destroy(proc->pbuf);
      wsproto_destroy(proc->wsproto);
      free(proc->buf);
      free(proc);

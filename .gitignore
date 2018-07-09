@@ -33,3 +33,5 @@
 /src/pkg/re2temp/
 
 .*.swp
+
+*.dSYM

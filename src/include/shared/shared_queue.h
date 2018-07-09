@@ -27,7 +27,7 @@ SOFTWARE.
 #include <stdlib.h>
 #include <stdint.h>
 #include <pthread.h>
-#if !defined(__FreeBSD__)
+#if !(defined(__FreeBSD__) || defined(__APPLE__))
 #include <malloc.h>
 #endif
 #include <assert.h>
@@ -111,8 +111,8 @@ CPP_OPEN
 #define INCR_CANT_STORE()
 #define INCR_IDLE()
 #define INCR_TOTAL_LENGTH()
-#define INCR_LENGTH() 
-#define DECR_LENGTH() 
+#define INCR_LENGTH()
+#define DECR_LENGTH()
 #define QTYPE_SWSR()
 #define QTYPE_MWSR()
 #define SQPERF_NRANK()
@@ -595,7 +595,7 @@ static inline int shared_queue_length(shared_queue_t * q) {
           return 0;
      }
 
-     int length; 
+     int length;
      pthread_mutex_lock(&q->mutex);
      length = q->length;
      pthread_mutex_unlock(&q->mutex);

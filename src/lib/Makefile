@@ -24,14 +24,14 @@ MODULES = $(sort $(patsubst %.o, %$(SUFFIX).o, $(FILES)))
 
 all: $(MODULES) $(WSARCHIVEFILE)
 
-wsperf.c: 
+wsperf.c:
 	$(SHOWFILE)
 
 $(WSARCHIVEFILE): $(MODULES)
 	$(SHOWFILE)
 	$(RM) $(WSARCHIVEFILE)  # otherwise ar leaves old code in there
 	$(AR) rcs $@ $(MODULES)
-	$(CP) $@ $(WS_LIB_DIR) 
+	$(CP) $@ $(WS_LIB_DIR)
 
 graph.lex.cc: graph.l graph.tab.hh
 	$(SHOWFILE)
@@ -58,7 +58,8 @@ wscalc.tab.c wscalc.tab.h: wscalc.y $(WS_BUILDROOT)/include/wscalc.h
 	$(CPP) $(CPPFLAGS) -c $< -o $@
 
 clean:
-	$(RM) *.so .*.swp *.dSYM ._* *.o shared/*.o 
+	$(RM) *.o .*.swp ._* *.8 *_so
+	$(RM) -r *.dSYM
 	$(RM) parse_graph.* graph.lex* graph.tab* wscalc.c wscalc.tab* wscalc_int.c wscalc_int.tab.c wscalc_int.tab.h
 	$(RM) libwaterslide.dylib libwaterslide.a libwaterslide-parallel.a
 

@@ -1,170 +1,83 @@
 addlabelmember: alm, addlabelm
-addlabelmember: alm, addlabelm
-appendfirstitem: appendfirst
 appendfirstitem: appendfirst
 appendlast: appendlastitem
-appendlast: appendlastitem
-asciihex: asciihex
 asciihex: asciihex
 bandwidth: bw
-bandwidth: bw
-base64: unbase64
 base64: unbase64
 bloom: bloomuniq
-bloom: bloomuniq
-bundle: bundle
 bundle: bundle
 calc: mathwscalc, math, icalc
-calc: mathwscalc, math, icalc
-charcnt: charcnt
 charcnt: charcnt
 cntquery: metacntquery, cntquery_shared, metacntquery_shared
-cntquery: metacntquery, cntquery_shared, metacntquery_shared
-combinestrings: combinestrings
 combinestrings: combinestrings
 countlabels: countlabels
-countlabels: countlabels
-csv_in: csv_in
 csv_in: csv_in
 data2label: data2label
-data2label: data2label
-decodejson: json, jsondecode
 decodejson: json, jsondecode
 denest: unnest, flatten
-denest: unnest, flatten
-dupestring: dupestring
 dupestring: dupestring
 dupetuple: dtuple, duptup, tupdup
-dupetuple: dtuple, duptup, tupdup
-encodebase64: encodebase64
 encodebase64: encodebase64
 equal: equal
-equal: equal
-exactmatch: ematch
 exactmatch: ematch
 exec_in: exec_in
-exec_in: exec_in
-file_in: file_in
 file_in: file_in
 fillmissing: fillmissing
-fillmissing: fillmissing
-firstn: first, firstn_shared, first_shared
 firstn: first, firstn_shared, first_shared
 fixedmatch: fmatch, fixedmatch_shared, fmatch_shared
-fixedmatch: fmatch, fixedmatch_shared, fmatch_shared
-flush: flush
 flush: flush
 haslabel: order
-haslabel: order
-heavyhitters: heavyhitters
 heavyhitters: heavyhitters
 jointuple: join, jointuples
-jointuple: join, jointuples
-keeplast: lastvalue
 keeplast: lastvalue
 keepn: keepn
-keepn: keepn
-keyadd: keyadd
 keyadd: keyadd
 keyadd_initial: keyadd_initial
-keyadd_initial: keyadd_initial
-keyadd_initial_custom: trackbkey, keyadd_initial_custom_shared, trackbkey_shared
 keyadd_initial_custom: trackbkey, keyadd_initial_custom_shared, trackbkey_shared
 keyaverage: avgkey
-keyaverage: avgkey
-keycount: countkey
 keycount: countkey
 keyflow: keyflow
-keyflow: keyflow
-keyrate: keyrate
 keyrate: keyrate
 keytime: keyoccur
-keytime: keyoccur
-keyvariance: varkey
 keyvariance: varkey
 label: labeler, metalabel, namer
-label: labeler, metalabel, namer
-labelmultiple: labelmultiple
 labelmultiple: labelmultiple
 labelstat: statlabel
-labelstat: statlabel
-lastn: appendlastn, lastn_shared, appendlastn_shared
 lastn: appendlastn, lastn_shared, appendlastn_shared
 loadbalance: loadbalance
-loadbalance: loadbalance
-match: stringmatch, aho
 match: stringmatch, aho
 match_uint: matchu, uintmatch, uintcmp, cmpuint
-match_uint: matchu, uintmatch, uintcmp, cmpuint
-mergetuple: mergetuple
 mergetuple: mergetuple
 metadice: metaout, metaprint, printmeta
-metadice: metaout, metaprint, printmeta
-mklabelset: mklabelset
 mklabelset: mklabelset
 mknest: renest
-mknest: renest
-print: pmeta, p
 print: pmeta, p
 print2json: pmetajson, pjson
-print2json: pmetajson, pjson
-rbsort: rbsort
 rbsort: rbsort
 re2: re2
-re2: re2
-redis: hiredis
-redis: hiredis
-removefromtuple: tupledelete, tupleremove
 removefromtuple: tupledelete, tupleremove
 sample: sample
-sample: sample
-sed: sed
 sed: sed
 sort: sort
-sort: sort
-source_keygen: source_keygen
 source_keygen: source_keygen
 splitstring: splitstring
-splitstring: splitstring
-splittuple: tsplit, tuplesplit
 splittuple: tsplit, tuplesplit
 stateclimb: stateclimb
-stateclimb: stateclimb
-strings: strings
 strings: strings
 strlen: strlen
-strlen: strlen
-substring: substring
 substring: substring
 subtuple: stuple, subtup, tupsub
-subtuple: stuple, subtup, tupsub
-tcpcatch: tcpcatch
 tcpcatch: tcpcatch
 tcpthrow: tcpthrow
-tcpthrow: tcpthrow
-top: top
 top: top
 tr: tr
-tr: tr
-tuplehash: hashtuple, tuplehasher, metatuplehash, thash
 tuplehash: hashtuple, tuplehasher, metatuplehash, thash
 udpgen_in: udpgen_in
-udpgen_in: udpgen_in
-udpgen_in_buf: udpgen_in_buf
 udpgen_in_buf: udpgen_in_buf
 unbundle: unbundle
-unbundle: unbundle
-uniq: unique, uniq_shared, unique_shared
 uniq: unique, uniq_shared, unique_shared
 uniqexpire: expireuniq
-uniqexpire: expireuniq
 untiln: until
-untiln: until
-workbalance: wbalance
-workreceive: wreceive
-writebuffer: writebuffer
 writebuffer: writebuffer
 wsproto_in: pb2in, pb2_filein
-wsproto_in: pb2in, pb2_filein
-wsproto_out: pb2out, pb2_fileout
 wsproto_out: pb2out, pb2_fileout

@@ -8,16 +8,16 @@ CFLAGS += $(PERF_FLAG)
 
 MODULES = $(patsubst %.c, %$(WS_SFX), $(wildcard wsdt_*.c))
 
-CFLAGS += -shared 
+CFLAGS += -shared
 
 #DESTDIR = $(WS_HOME)/datatypes/$(PDIR)
 DESTDIR = $(WS_LIB_DIR)
 
-#all: $(PDIR) $(MODULES) $(DESTDIR) 
-all: $(DESTDIR) $(MODULES) 
+#all: $(PDIR) $(MODULES) $(DESTDIR)
+all: $(DESTDIR) $(MODULES)
 
 #$(PDIR):
-#	$(MKDIR) $(PDIR) 
+#	$(MKDIR) $(PDIR)
 
 $(DESTDIR):
 	$(MKDIR) $(DESTDIR)
@@ -25,11 +25,12 @@ $(DESTDIR):
 %$(WS_SFX): %.c
 	$(SHOWFILE)
 	$(CC) $(CFLAGS) $< -o $@
-ifndef ISFREEBSD
+ifndef ISBSD
 	$(CP) -t $(DESTDIR) $@
 else
 	$(CP) $@ $(DESTDIR)
 endif
 
 clean:
-	$(RM) .*.swp *.dSYM ._* *_so 
+	$(RM) *.o .*.swp ._* *.8 *_so
+	$(RM) -r *.dSYM
