@@ -85,8 +85,6 @@ char *proc_tuple_member_labels[] = {"EXACTMATCH", NULL};
 proc_option_t proc_opts[] = {
      /*  'option character', "long option string", "option argument",
 	 "option description", <allow multiple>, <required>*/
-     {'J',"","sharename",
-     "shared table with other kids",0,0},
      {'F',"","filename", 
      "file with reference strings",0,0},
      {'L',"","LABEL-M",

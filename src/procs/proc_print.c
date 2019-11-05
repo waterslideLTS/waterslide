@@ -101,8 +101,16 @@ proc_option_t proc_opts[] = {
      "verbose: print labels and data (if more than one V, e.g., VV, then print data's datatype as well)",0,0},
      {'T',"","",
      "tree: print labels and data in a tree-type format.  Only useful with -V", 0,0},
+     {'J',"","",
+     "print as json", 0,0},
+     {'1',"","",
+     "print only first label (JSON only)", 0,0},
+     {'2',"","",
+     "print only last label (JSON only)", 0,0},
      {'b',"","",
      "print binary format",0,0},
+     {'E',"","",
+     "print output to STDERR",0,0},
      {'t',"","period",
      "timecycle period (default unit is sec., or use m for minutes, h for hours)",0,0},
      {'v',"","moveprefix",
@@ -129,6 +137,7 @@ char proc_nonswitch_opts[] = "";
 static int proc_process_meta(void *, wsdata_t*, ws_doutput_t*, int);
 static int proc_process_label_only(void *, wsdata_t*, ws_doutput_t*, int);
 static int proc_process_verbose(void *, wsdata_t*, ws_doutput_t*, int);
+static int proc_json(void *, wsdata_t*, ws_doutput_t*, int);
 
 typedef struct _proc_instance_t {
      uint64_t meta_process_cnt;
@@ -148,6 +157,9 @@ typedef struct _proc_instance_t {
      int do_hex;
      int line_labels;
      ws_outtype_t * outtype_meta[LOCAL_MAX_TYPES];
+     int do_json;
+     int print_only_first_label;
+     int print_only_last_label;
 } proc_instance_t;
 
 static int proc_cmd_options(int argc, char ** argv, 
@@ -155,18 +167,27 @@ static int proc_cmd_options(int argc, char ** argv,
      int op;
      int A_opt = 0, O_opt = 0;
 
-     while ((op = getopt(argc, argv, "RXHw:VSs:LbA:O:t:v:m:TdD")) != EOF) {
-          switch (op) { 
+     while ((op = getopt(argc, argv, "21EJRXHw:VSs:LbA:O:t:v:m:TdD")) != EOF) {
+          switch (op) {
+          case '2':
+               proc->print_only_last_label = 1;
+               break;
+          case '1':
+               proc->print_only_first_label = 1;
+               break;
+          case 'E':
+               proc->fs->outfp = stderr;
+               break;
           case 'H':
                proc->line_labels = 1;
                break;
           case 'V':
                proc->verbose++;
                break;
-	  case 'T':
-	       proc->tree_verbose = 1;
-	       proc->sep = '\n';
-	       break;
+          case 'T':
+               proc->tree_verbose = 1;
+               proc->sep = '\n';
+               break;
           case 'S':
                proc->do_strings = 1;
                break;
@@ -195,51 +216,54 @@ static int proc_cmd_options(int argc, char ** argv,
                proc->binary = 1;
                tool_print("printing in binary");
                break;
-	  case 'A':
-	       A_opt++;
-	       if (!fileout_parse_filespec(optarg, proc->fs, 0)) {
-		    return 0;
-	       }
-	       proc->fs->mode = 'a';
+          case 'J':
+               proc->do_json = 1;
+               break;
+          case 'A':
+               A_opt++;
+               if (!fileout_parse_filespec(optarg, proc->fs, 0)) {
+                    return 0;
+               }
+               proc->fs->mode = 'a';
                break;
           case 'w':
-	       proc->fs->fileprefix = fileout_parse_filespec(optarg, NULL, 1);
-	       break;
+               proc->fs->fileprefix = fileout_parse_filespec(optarg, NULL, 1);
+               break;
           case 'O':
-    	       O_opt++;
-	       if (!fileout_parse_filespec(optarg, proc->fs, 0)) {
-		    return 0;
-	       }
-	       proc->fs->mode = 'w';
-	       break;
-	  case 't': 
-	       proc->fs->timeslice = sysutil_get_duration_ts(optarg);
-	       break;
-	  case 'v':
-	       proc->fs->moveprefix = fileout_parse_filespec(optarg, NULL, 1);
-	       break;
-	  case 'm':
-	       proc->fs->recordmax = strtoul(optarg, NULL, 0);
-	       break;
-//	  case 'M':
-//	       proc->fs->bytemax = sysutil_get_strbytes(optarg);
-//	       break;
-	  case 'd':
-	       proc->dropfslabel = 1;
-	       break;
-	  case 'D':
-	       proc->fs->safename = 1;
-	       break;
+               O_opt++;
+               if (!fileout_parse_filespec(optarg, proc->fs, 0)) {
+                    return 0;
+               }
+               proc->fs->mode = 'w';
+               break;
+          case 't': 
+               proc->fs->timeslice = sysutil_get_duration_ts(optarg);
+               break;
+          case 'v':
+               proc->fs->moveprefix = fileout_parse_filespec(optarg, NULL, 1);
+               break;
+          case 'm':
+               proc->fs->recordmax = strtoul(optarg, NULL, 0);
+               break;
+               //	  case 'M':
+               //	       proc->fs->bytemax = sysutil_get_strbytes(optarg);
+               //	       break;
+          case 'd':
+               proc->dropfslabel = 1;
+               break;
+          case 'D':
+               proc->fs->safename = 1;
+               break;
           default:
                return 0;
           }
      }
 
      if (A_opt && O_opt) {
-       error_print("-O and -A options are mutually exclusive.");
-       return 0;
+          error_print("-O and -A options are mutually exclusive.");
+          return 0;
      }
-     
+
      return 1;
 }
 
@@ -296,6 +320,10 @@ proc_process_t proc_input_set(void * vinstance, wsdatatype_t * meta_type,
      }
 
      proc->outtype_meta[type_index] = ws_add_outtype(olist, meta_type, NULL);
+
+     if ((meta_type == dtype_tuple) && proc->do_json) {
+          return proc_json;
+     }
 
      // we are happy.. now set the processor function
      if (proc->label_only) {
@@ -615,6 +643,205 @@ static int proc_process_meta(void * vinstance, wsdata_t* input_data,
      return 0;
 }
 
+static void print_json_label(proc_instance_t * proc, wsdata_t * member) {
+
+     if (!member->label_len) {
+          fprintf(proc->outfp, "\"NULL\":");
+     }
+     else if (proc->print_only_last_label) {
+          fprintf(proc->outfp,"\"%s\":", member->labels[member->label_len-1]->name);
+     }
+     else if (proc->print_only_first_label) {
+          fprintf(proc->outfp,"\"%s\":", member->labels[0]->name);
+     }
+     else {
+          fprintf(proc->outfp,"\"");
+          int i;
+          for (i = 0; i < member->label_len; i++) {
+               fprintf(proc->outfp, "%s%s", (i>0) ? ":":"", member->labels[i]->name);
+          }
+          fprintf(proc->outfp, "\":");
+     }
+}
+
+static void print_json_string(proc_instance_t * proc, wsdata_t * member) {
+     fprintf(proc->outfp, "\"");
+     wsdt_string_t * str = (wsdt_string_t *)member->data;
+     int prior = 0;
+     int i;
+     char * jstr;
+     for (i = 0; i < str->len; i++) {
+          jstr = NULL;
+          switch(str->buf[i]) {
+          case '\"':
+               jstr = "\\\"";
+               break;
+          case '\r':
+               jstr = "\\r";
+               break;
+          case '\b':
+               jstr = "\\b";
+               break;
+          case '/':
+               jstr = "\\/";
+               break;
+          case '\f':
+               jstr = "\\f";
+               break;
+          case '\n':
+               jstr = "\\n";
+               break;
+          case '\t':
+               jstr = "\\t";
+               break;
+          case '\\':
+               jstr = "\\\\";
+               break;
+          }
+          if (jstr) {
+               if (prior < i) {
+                    fprintf(proc->outfp, "%.*s", i - prior, str->buf + prior);
+               }
+               fprintf(proc->outfp, "%s", jstr);
+               prior = i + 1;
+          }
+     }
+     if (prior < str->len) {
+          fprintf(proc->outfp, "%.*s", str->len - prior, str->buf + prior);
+     }
+     fprintf(proc->outfp, "\"");
+}
+
+static void print_json_tuple(proc_instance_t * proc, wsdata_t * tdata);
+
+static void print_json_member(proc_instance_t * proc, wsdata_t * member) {
+     if (member->dtype == dtype_tuple) {
+          fprintf(proc->outfp, "{");
+          print_json_tuple(proc, member);
+          fprintf(proc->outfp, "}");
+          return;
+     }
+     else if (!member->dtype->print_func) {
+          return;
+     }
+
+     if (member->dtype == dtype_binary) {
+          //print binary as basic hex
+          fprintf(proc->outfp, "\"");
+          wsdt_binary_t * bin = (wsdt_binary_t*)member->data;
+          int b;
+          for (b = 0; b < bin->len; b++) {
+               fprintf(proc->outfp, "%02u", (uint8_t)bin->buf[b]);
+          }
+          fprintf(proc->outfp, "\"");
+     }
+     else if (member->dtype == dtype_string) {
+          print_json_string(proc, member);
+     }
+     else {
+          fprintf(proc->outfp, "\"");
+          member->dtype->print_func(proc->outfp, member, WS_PRINTTYPE_TEXT);
+          fprintf(proc->outfp, "\"");
+     }
+     return;
+
+}
+
+static void print_json_tuple(proc_instance_t * proc, wsdata_t * tdata) {
+     wsdt_tuple_t * tuple = (wsdt_tuple_t*)tdata->data;
+     wsdata_t * member;
+     int i;
+     int out = 0;
+
+     for (i = 0; i < tuple->len; i++) {
+          member = tuple->member[i];
+
+          if ((member->dtype!=dtype_tuple) && !member->dtype->print_func) {
+               continue;
+          }
+          if (out) {
+               fprintf(proc->outfp, ",");
+          }
+
+          print_json_label(proc, member);
+
+          //check if list
+          int listlen = 0;
+          int nolist = 0;
+          int j;
+          for (j = (i+1); j < tuple->len; j++) {
+               wsdata_t * nextmember = tuple->member[j];
+               if ((nextmember->dtype!=dtype_tuple) && !nextmember->dtype->print_func) {
+                    break;
+               }
+               if (member->label_len != nextmember->label_len) {
+                    break;
+               }
+               int l;
+               for (l = 0; l < member->label_len; l++) {
+                    if (member->labels[l] != nextmember->labels[l]) {
+                         nolist = 1;
+                         break;
+                    }
+               }
+               if (nolist) {
+                    break;
+               }
+               listlen++;
+          }
+          
+          if (listlen) {
+               fprintf(proc->outfp, "[");
+               
+               for (j = 0; j <= listlen; j++) {
+                    member = tuple->member[i+j]; 
+                    if (j > 0) {
+                         fprintf(proc->outfp, ",");
+                    }
+                    print_json_member(proc, member);
+               }
+               fprintf(proc->outfp, "]");
+               i += listlen;
+          } 
+          else {
+               print_json_member(proc, member);
+          }
+          out++;
+     }
+}
+
+static int proc_json(void * vinstance, wsdata_t* input_data,
+                                ws_doutput_t * dout, int type_index) {
+
+     proc_instance_t * proc = (proc_instance_t*)vinstance;
+     proc->meta_process_cnt++;
+
+     proc->outfpdata = fileout_select_file(input_data, proc->fs, 0);
+     proc->outfp = (FILE *)proc->outfpdata->fp;
+
+     if (input_data->label_len) {
+          fprintf(proc->outfp, "{");
+          print_json_label(proc, input_data);
+          fprintf(proc->outfp, "{");
+          print_json_tuple(proc, input_data);
+          fprintf(proc->outfp, "}}\n");
+     }
+     else {
+          fprintf(proc->outfp, "{");
+          print_json_tuple(proc, input_data);
+          fprintf(proc->outfp, "}\n");
+     }
+
+     //implement as passthrough
+     if (ws_check_subscribers(proc->outtype_meta[type_index])) {
+          ws_set_outdata(input_data, proc->outtype_meta[type_index], dout);
+          proc->outcnt++;
+     }
+     return 0;
+}
+
+
+
 //// proc processing function assigned to a specific data type in proc_io_init
 //return 1 if output is available
 // return 0 if not output
@@ -669,7 +896,9 @@ static int proc_process_verbose(void * vinstance, wsdata_t* input_data,
 int proc_destroy(void * vinstance) {
      proc_instance_t * proc = (proc_instance_t*)vinstance;
      tool_print("meta_proc cnt %" PRIu64, proc->meta_process_cnt);
-     tool_print("output cnt %" PRIu64, proc->outcnt);
+     if (proc->outcnt) {
+          tool_print("output cnt %" PRIu64, proc->outcnt);
+     }
 
      //destroy outfile(s) 
      fileout_filespec_cleanup(proc->fs);

@@ -74,12 +74,20 @@ proc_option_t proc_opts[] = {
      "case insensitive, must be done prior to match files or arguments",0,0},
      {'L',"","label",
      "label to add to matched value",0,0},
+     {'U',"","label",
+     "label to apply to unmatched values (not supported in NOT mode)",0,0},
      {'F',"","file",
      "file with items to search",0,0},
      {'R',"","string",
      "string to match",0,0},
      {'t',"","",
      "tag parent tuple of member match",0,0},
+     {'B',"","label",
+     "tag root/base tuple if any match found",0,0},
+     {'S',"","label",
+     "place match label in tuple string",0,0},
+     {'1',"","",
+     "[the number one] label only first match",0,0},
      //the following must be left as-is to signify the end of the array
      {' ',"","",
      "",0,0}
@@ -119,11 +127,16 @@ typedef struct _proc_instance_t {
 
      ws_outtype_t * outtype_tuple;
      wslabel_t * label_match;
+     wslabel_t * label_unmatch;
+     wslabel_t * label_base;
      label_match_t * lmatch;
      ahoc_t * ac_struct;
      int do_tag[LOCAL_MAX_TYPES];
      wslabel_nested_set_t nest;
      int tag_parent_tuple;
+
+     wslabel_t * label_stringlabel;
+     int match_only_one;
 } proc_instance_t;
 
 static int proc_cmd_options(int argc, char ** argv, 
@@ -131,8 +144,23 @@ static int proc_cmd_options(int argc, char ** argv,
      int op;
      int lid;
 
-     while ((op = getopt(argc, argv, "M:tIR:F:L:")) != EOF) {
+     while ((op = getopt(argc, argv, "1S:s:U:u:M:tIR:F:L:B:b:")) != EOF) {
           switch (op) {
+          case '1':
+               proc->match_only_one = 1;
+               break;
+          case 'S':
+          case 's':
+               proc->label_stringlabel = wsregister_label(type_table, optarg);
+               break;
+          case 'b':
+          case 'B':
+               proc->label_base = wsregister_label(type_table, optarg);
+               break;
+          case 'u':
+          case 'U':
+               proc->label_unmatch = wsregister_label(type_table, optarg);
+               break;
           case 't':
                proc->tag_parent_tuple = 1;
                break;
@@ -241,6 +269,16 @@ proc_process_t proc_input_set(void * vinstance, wsdatatype_t * input_type,
      }
 }
 
+static inline void add_match_string_label(proc_instance_t * proc, wsdata_t * tuple,
+                                          wslabel_t * label) {
+     wslabel_t ** tlabel = (wslabel_t **) tuple_member_create(tuple, dtype_label,
+                                                              proc->label_stringlabel);
+
+     if (tlabel) {
+          *tlabel = label;
+     }
+}
+
 static inline int find_match(proc_instance_t * proc, wsdata_t * wsd, char * content,
                              int len, wsdata_t * tdata, wsdata_t * tparent) {
      if (len <= 0) {
@@ -257,7 +295,10 @@ static inline int find_match(proc_instance_t * proc, wsdata_t * wsd, char * cont
           if (wsd) {
                wslabel_t * mlabel = label_match_get_label(proc->lmatch, mval);
                mlabel = mlabel ? mlabel : proc->label_match;
-               if (!wsdata_check_label(wsd, mlabel)) {
+               if (proc->label_stringlabel) {
+                    add_match_string_label(proc, tdata, mlabel);
+               }
+               else if (!wsdata_check_label(wsd, mlabel)) {
                    tuple_add_member_label(tdata, wsd, mlabel);
                }
                if (proc->tag_parent_tuple && !wsdata_check_label(tdata, mlabel)) {
@@ -270,6 +311,25 @@ static inline int find_match(proc_instance_t * proc, wsdata_t * wsd, char * cont
                }
           }
           matches++;
+          if (proc->match_only_one) {
+               break;
+          }
+     }
+     if (!matches && proc->label_unmatch) {
+          if (proc->label_stringlabel) {
+               add_match_string_label(proc, tdata, proc->label_unmatch);
+          }
+          tuple_add_member_label(tdata, wsd, proc->label_unmatch);
+          if (proc->tag_parent_tuple && 
+              !wsdata_check_label(tdata, proc->label_unmatch)) {
+               if (tparent) {
+                    tuple_add_member_label(tparent, tdata,
+                                           proc->label_unmatch);
+               }
+               else {
+                    wsdata_add_label(tdata, proc->label_unmatch);
+               }
+          }
      }
      return matches ? 1 : 0;
 }
@@ -309,10 +369,11 @@ static int proc_process_meta(void * vinstance, wsdata_t* input_data,
                                      proc_nest_match_callback,
                                      proc, NULL);
 
+     if (proc->label_base && found && 
+         !wsdata_check_label(input_data, proc->label_base)) {
+          wsdata_add_label(input_data, proc->label_base);
+     }
      if (found || proc->do_tag[type_index]) {
-          if (proc->label_match && found && proc->do_tag[type_index]) {
-               wsdata_add_label(input_data, proc->label_match);
-          }
           ws_set_outdata(input_data, proc->outtype_tuple, dout);
           proc->outcnt++;
      }
@@ -336,6 +397,11 @@ static int proc_process_meta_inverse(void * vinstance, wsdata_t* input_data,
      int found = tuple_nested_search(input_data, &proc->nest,
                                      proc_nest_notmatch_callback,
                                      proc, NULL);
+
+     if (proc->label_base && !found && 
+         !wsdata_check_label(input_data, proc->label_base)) {
+          wsdata_add_label(input_data, proc->label_base);
+     }
      if (!found) {
           ws_set_outdata(input_data, proc->outtype_tuple, dout);
           proc->outcnt++;
@@ -366,11 +432,11 @@ static int proc_process_allstr(void * vinstance, wsdata_t* input_data,
           found += member_match(proc, member, member, input_data, NULL);
      }
 
+     if (proc->label_base && found && 
+         !wsdata_check_label(input_data, proc->label_base)) {
+          wsdata_add_label(input_data, proc->label_base);
+     }
      if (found || proc->do_tag[type_index]) {
-
-          if (proc->label_match && found && proc->do_tag[type_index]) {
-               wsdata_add_label(input_data, proc->label_match);
-          }
           ws_set_outdata(input_data, proc->outtype_tuple, dout);
           proc->outcnt++;
      }
@@ -399,6 +465,10 @@ static int proc_process_allstr_inverse(void * vinstance, wsdata_t* input_data,
      for (i = 0; i < tlen; i++) {
           member = tuple->member[i];
           found += member_match(proc, member, NULL, NULL, NULL);
+     }
+     if (proc->label_base && !found && 
+         !wsdata_check_label(input_data, proc->label_base)) {
+          wsdata_add_label(input_data, proc->label_base);
      }
      if (!found) {
           ws_set_outdata(input_data, proc->outtype_tuple, dout);

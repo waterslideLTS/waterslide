@@ -58,6 +58,10 @@ proc_option_t proc_opts[] = {
      "delimiter string to ignore (default: no delimiter)",0,0},
      {'L',"","LABEL",
      "label of newly decoded data",0,0},
+     {'X',"","",
+     "decode only if entire string is hex or delimiter",0,0},
+     {'A',"","character",
+     "decode into string, non-printable will be replaced with character",0,0},
      {'p',"","",
      "pass along all non hex (default behavior: drop non hex characters)",0,0},
      //the following must be left as-is to signify the end of the array
@@ -78,6 +82,9 @@ typedef struct _proc_instance_t {
      int pass_all;
      char * ignore;
      int ignore_len;
+     int allhex;
+     int string_only;
+     char nonprint_char;
 } proc_instance_t;
 
 int procbuffer_instance_size = sizeof(proc_instance_t);
@@ -89,12 +96,15 @@ proc_labeloffset_t proc_labeloffset[] =
 };
 
 
-char procbuffer_option_str[]    = "s:L:p";
+char procbuffer_option_str[]    = "A:Xs:L:p";
 
 int procbuffer_option(void * vproc, void * type_table, int c, const char * str) {
      proc_instance_t * proc = (proc_instance_t *)vproc;
 
      switch(c) {
+     case 'X':
+          proc->allhex = 1;
+          break;
      case 's':
           proc->ignore = strdup(str);
           proc->ignore_len = strlen(proc->ignore);
@@ -104,6 +114,10 @@ int procbuffer_option(void * vproc, void * type_table, int c, const char * str) 
           break;
      case 'p':
           proc->pass_all = 1;
+          break;
+     case 'A':
+          proc->string_only = 1;
+          proc->nonprint_char = str[0];
           break;
      }
      return 1;
@@ -121,12 +135,46 @@ static inline uint8_t get_xdigit(uint8_t c) {
      }
 }
 
+static int check_allhex(proc_instance_t * proc, uint8_t * buf, int buflen) {
+     int i;
+     for (i = 0; i < buflen; i++) {
+          if (proc->ignore_len && (i < (buflen - proc->ignore_len + 1)) &&
+              (strncmp((char*)buf + i, proc->ignore, proc->ignore_len) == 0)) {
+               i += proc->ignore_len - 1;
+               continue;
+          }
+          if (i < (buflen - 1)) {
+               if (isxdigit(buf[i]) && isxdigit(buf[i+1])) {
+                    i++;
+               }
+               else {
+                    return 0;
+               }
+          }
+          else {
+               return 0;
+          }
+     }
+     return 1;
+}
+
 int procbuffer_decode(void * vproc, wsdata_t * tdata,
                                      wsdata_t * member,
                                      uint8_t * buf, int buflen) {
      proc_instance_t * proc = (proc_instance_t*)vproc;
 
-     wsdt_binary_t * bin = tuple_create_binary(tdata, proc->label_decode, buflen);
+     if (proc->allhex && !check_allhex(proc, buf, buflen)) {
+          return 1;
+     }
+
+     wsdt_binary_t * bin = NULL;
+     if (proc->string_only) {
+          wsdt_string_t * str = tuple_create_string(tdata, proc->label_decode, buflen);
+          bin = (wsdt_binary_t*)str;
+     }
+     else {
+          bin = tuple_create_binary(tdata, proc->label_decode, buflen);
+     }
      if (!bin) {
           return 1; // tuple is full
      }
@@ -141,6 +189,9 @@ int procbuffer_decode(void * vproc, wsdata_t * tdata,
           if (i < (buflen - 1)) {
                if (isxdigit(buf[i]) && isxdigit(buf[i+1])) {
                     bin->buf[blen] = (get_xdigit(buf[i]) << 4) + get_xdigit(buf[i+1]);
+                    if (proc->string_only && !isprint(bin->buf[blen])) {
+                         bin->buf[blen] = proc->nonprint_char;
+                    }
                     i++;
                     blen++;
                     continue;

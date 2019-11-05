@@ -43,7 +43,7 @@ char proc_version[]     = "1.1";
 char *proc_menus[]     = { "Filters", NULL };
 char *proc_alias[]     = { "keyoccur", NULL };
 char proc_name[]       = PROC_NAME;
-char proc_purpose[]    = "labels keys based on occurance";
+char proc_purpose[]    = "labels repeated key based on occurance near in time/sequence";
 
 proc_option_t proc_opts[] = {
      /*  'option character', "long option string", "option argument",

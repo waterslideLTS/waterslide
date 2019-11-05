@@ -102,7 +102,7 @@ proc_option_t proc_opts[] = {
      /*  'option character', "long option string", "option argument",
          "option description", <allow multiple>, <required>*/
      {'d',"","delimiters",
-     "use characters as delimiters",0,0},
+     "use characters as delimiters (CRNL = no delimiter)",0,0},
      {'F',"","file",
      "use file as a list of csv input files",0,0},
      {'r',"","file",
@@ -123,6 +123,8 @@ proc_option_t proc_opts[] = {
      "poll a file on this period",0,0},
      {'N',"","",
      "disable auto-datatyping of members (e.g., as UINT, etc)...all members are marked as string types",0,0},
+     {'X',"","",
+     "read entire line as record",0,0},
      //the following must be left as-is to signify the end of the array
      {' ',"","",
      "",0,0}
@@ -135,7 +137,7 @@ char proc_nonswitch_opts[]	= "LABEL to apply to parsed field";
 #define LABEL_BEGIN_CHAR '['
 #define LABEL_END_CHAR ']'
 #define MAXUDPBUF 9000
-#define READ_BUFSIZE 8192
+#define READ_BUFSIZE 65536
 
 typedef struct _listen_sock_t {
      int s; //the file descriptor
@@ -269,7 +271,7 @@ static int proc_cmd_options(int argc, char ** argv,
      // qty of labels provided on cmd line for members parsed from input events
      int label_cnt = 0; // limited to 128
 
-     while ((op = getopt(argc, argv, "lIP:pt:F:r:is:d:N")) != EOF) {
+     while ((op = getopt(argc, argv, "lIP:pt:F:r:is:d:NX")) != EOF) {
           switch (op) {
           case 'l': // use first element in event as container label
                proc->first_el_label = 1;
@@ -315,7 +317,12 @@ static int proc_cmd_options(int argc, char ** argv,
           case 's':
           case 'd': // use characters as delimiters
                free(proc->delim);
-               if (strcmp(optarg, "\\t") == 0) {
+               if ((strcmp(optarg, "CRNL") == 0) ||
+                   (strcasecmp(optarg, "NONE") == 0)) {
+                    proc->delim = strdup("\r\n");
+                    tool_print("using [newline] and [return] as input delimiter");
+               }
+               else if (strcmp(optarg, "\\t") == 0) {
                     proc->delim = strdup("\t");
                     tool_print("using [tab] as input delimiter");
                }
@@ -325,6 +332,13 @@ static int proc_cmd_options(int argc, char ** argv,
                }
                break;
           case 'N': // use stdin for data
+               proc->no_autodatatyping = 1;
+               break;
+          case 'X':
+               tool_print("reading lines as records");
+               proc->delim = strdup("\r\n");
+               wslabel_set_add_noindex(type_table, &proc->lset, "LINE");
+               label_cnt++;
                proc->no_autodatatyping = 1;
                break;
           default:

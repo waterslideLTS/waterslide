@@ -66,6 +66,8 @@ proc_option_t proc_opts[] = {
      "insert string between combined label members",0,0},
      {'L',"","",
      "label of combined strings",0,0},
+     {'S',"","",
+     "force output to be a string",0,0},
      //the following must be left as-is to signify the end of the array
      {' ',"","",
      "",0,0}
@@ -91,6 +93,7 @@ typedef struct _proc_instance_t {
      wslabel_set_t lset;
      char * delim;
      int delimlen;
+     int forcestring;
 } proc_instance_t;
 
 static int proc_cmd_options(int argc, char ** argv, 
@@ -98,8 +101,11 @@ static int proc_cmd_options(int argc, char ** argv,
                              void * type_table) {
      int op;
 
-     while ((op = getopt(argc, argv, "c:L:")) != EOF) {
+     while ((op = getopt(argc, argv, "Sc:L:")) != EOF) {
           switch (op) {
+          case 'S':
+               proc->forcestring = 1;
+               break;
           case 'c':
                proc->delim = strdup(optarg);
                proc->delimlen = strlen(optarg);
@@ -206,6 +212,9 @@ static int proc_process_label(void * vinstance, wsdata_t* input_data,
                }
           }
      }
+
+     //override binary detection
+     isbinary = (!proc->forcestring) && isbinary;
 
      //allocate new string
      if (olen) {

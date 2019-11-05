@@ -240,7 +240,7 @@ int proc_init(wskid_t * kid, int argc, char ** argv, void ** vinstance, ws_sourc
 
      if (r == -1) {
           fprintf(stderr, "%% Error creating queue: %s\n",
-                  rd_kafka_err2str(rd_kafka_errno2err(errno)));
+                  rd_kafka_err2str(rd_kafka_last_error()));
           return 0;
      }
 
@@ -354,7 +354,7 @@ static int data_source(void * vinstance, wsdata_t* source_data,
      
      if (r == -1) {
           fprintf(stderr, "%% Error: %s\n",
-                  rd_kafka_err2str(rd_kafka_errno2err(errno)));
+                  rd_kafka_err2str(rd_kafka_last_error()));
      }
      return 1;
 }
@@ -372,7 +372,7 @@ int proc_destroy(void * vinstance) {
 
           if (r != 0) {
                fprintf(stderr, "%% Error: %s\n",
-                       rd_kafka_err2str(rd_kafka_errno2err(errno)));
+                       rd_kafka_err2str(rd_kafka_last_error()));
           }
      }
      if (proc->rkqu) {

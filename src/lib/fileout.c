@@ -64,7 +64,7 @@ fileout_initialize(filespec_t *fs, void *type_table)
 {
      
      fs->outfpdata = calloc(1, sizeof(fpdata_t));
-     if (fs->outfp == stdout) {
+     if ((fs->outfp == stdout) || (fs->outfp == stderr)) {
 	  fs->outfpdata->fp = fs->outfp;
 	  return fs->outfpdata;
      }
@@ -766,7 +766,9 @@ fileout_filespec_cleanup(filespec_t *fs) {
 	  stringhash5_destroy(fs->fp_table);
 	  stringhash5_destroy(fs->evicted_table);
      } else {
-	  if (fs->outfpdata->fp && (fs->outfpdata->fp != stdout)) {
+	  if (fs->outfpdata->fp && 
+           (fs->outfpdata->fp != stdout) &&
+           (fs->outfpdata->fp != stderr) ) {
 	       close_fp(fs->outfpdata, fs, 0);
 	  }
      }
