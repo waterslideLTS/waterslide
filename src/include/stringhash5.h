@@ -579,7 +579,7 @@ static inline int stringhash5_open_sht_table(stringhash5_t ** table, void * proc
                //give an error if max_records does not match the input value for this thread
                if (max_records && ((stringhash5_t *)(*table))->max_records != 
                                    check_sh5_max_records(max_records)) {
-                    error_print("stringhash5 table max_records %"PRIu64" not equal to converted input value %d",
+                    error_print("stringhash5 table max_records %" PRIu64 " not equal to converted input value %d",
                                (uint64_t)((stringhash5_t *)(*table))->max_records, 
                                check_sh5_max_records(max_records));
                     return 0;
@@ -588,7 +588,7 @@ static inline int stringhash5_open_sht_table(stringhash5_t ** table, void * proc
                //give an error if data_alloc does not match the input value for this thread
                if (data_alloc && ((stringhash5_t *)(*table))->data_alloc != 
                                   stringhash5_pad_alloc(data_alloc)) {
-                    error_print("stringhash5 table data_alloc %"PRIu64" not equal to local stringhash5_pad_alloc(data_alloc) %d",
+                    error_print("stringhash5 table data_alloc %" PRIu64 " not equal to local stringhash5_pad_alloc(data_alloc) %d",
                                 (uint64_t)((stringhash5_t *)(*table))->data_alloc, 
                                 stringhash5_pad_alloc(data_alloc));
                     return 0;
@@ -783,7 +783,7 @@ static inline int stringhash5_check_params(void ** table, uint32_t max_records, 
 
      //give an error if max_records does not match the input value for this thread
      if (((stringhash5_t *)(*table))->max_records != check_sh5_max_records(max_records)) {
-          error_print("stringhash5 table max_records %"PRIu64" not equal to converted input value %d",
+          error_print("stringhash5 table max_records %" PRIu64 " not equal to converted input value %d",
                      (uint64_t)((stringhash5_t *)(*table))->max_records, 
                      check_sh5_max_records(max_records));
           return 0;
@@ -791,7 +791,7 @@ static inline int stringhash5_check_params(void ** table, uint32_t max_records, 
 
      //give an error if data_alloc does not match the input value for this thread
      if (((stringhash5_t *)(*table))->data_alloc != stringhash5_pad_alloc(data_alloc)) {
-          error_print("stringhash5 table data_alloc %"PRIu64" not equal to local stringhash5_pad_alloc(data_alloc) %d",
+          error_print("stringhash5 table data_alloc %" PRIu64 " not equal to local stringhash5_pad_alloc(data_alloc) %d",
                       (uint64_t)((stringhash5_t *)(*table))->data_alloc, 
                       stringhash5_pad_alloc(data_alloc));
           return 0;
@@ -921,7 +921,7 @@ static inline int stringhash5_create_shared_sht(void * v_type_table, void ** tab
                error_print("unable to enroll stringhash5 table");
                return 0;
           }
-          tool_print("sh5 memory used = %"PRIu64, ((stringhash5_t *)(*table))->mem_used);
+          tool_print("sh5 memory used = %" PRIu64, ((stringhash5_t *)(*table))->mem_used);
 
           //create the sharedata
           sharedata = (share5_t *)calloc(1,sizeof(share5_t));
@@ -1534,7 +1534,7 @@ static inline void stringhash5_destroy(stringhash5_t * sht) {
      if (!sht->sharelabel || !ret) {
           uint64_t expire_cnt = stringhash5_drop_cnt(sht);
           if (expire_cnt) {
-               tool_print("sh5 table expire cnt %"PRIu64, expire_cnt);
+               tool_print("sh5 table expire cnt %" PRIu64, expire_cnt);
           }
           if (sht->sharelabel) {
                free(sht->sharedata);
@@ -1667,7 +1667,7 @@ static inline void stringhash5_scour_and_destroy(stringhash5_t * sht,
           stringhash5_scour(sht, cb, vproc);
           uint64_t expire_cnt = stringhash5_drop_cnt(sht);
           if (expire_cnt) {
-               tool_print("sh5 table expire cnt %"PRIu64, expire_cnt);
+               tool_print("sh5 table expire cnt %" PRIu64, expire_cnt);
           }
           if (sht->sharelabel) {
                free(sht->sharedata);
@@ -1972,7 +1972,7 @@ static inline int stringhash5_dump(stringhash5_t * sht, FILE * fp) {
                       sht->data_alloc,
                       sht->max_records - i, fp);
      }
-     tool_print("sh5_dump table bytes = %"PRIu64,sht->mem_used);
+     tool_print("sh5_dump table bytes = %" PRIu64,sht->mem_used);
      SH5_ALL_UNLOCK(sht)
 
      return 1;
@@ -2005,7 +2005,7 @@ static inline int stringhash5_dump_with_ptrs(stringhash5_t * sht, FILE * fp,
                       sht->data_alloc,
                       sht->max_records - i, fp);
      }
-     tool_print("sh5_dump_w_ptrs table bytes = %"PRIu64,sht->mem_used);
+     tool_print("sh5_dump_w_ptrs table bytes = %" PRIu64,sht->mem_used);
 
      //write data items associated with pointers in the table
      if (sh5_datadump_cb) {

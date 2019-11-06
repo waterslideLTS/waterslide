@@ -50,8 +50,8 @@ fillmissing: fillmissing
 fillmissing: fillmissing
 firstn: first, firstn_shared, first_shared
 firstn: first, firstn_shared, first_shared
-fixedmatch: fmatch, fixedmatch_shared, fmatch_shared
-fixedmatch: fmatch, fixedmatch_shared, fmatch_shared
+fixedmatch: fmatch, rightmatch
+fixedmatch: fmatch, rightmatch
 flush: flush
 flush: flush
 haslabel: order
@@ -110,10 +110,8 @@ print2json: pmetajson, pjson
 print2json: pmetajson, pjson
 rbsort: rbsort
 rbsort: rbsort
-re2: re2
-re2: re2
-redis: hiredis
-redis: hiredis
+re2: rex
+re2: rex
 removefromtuple: tupledelete, tupleremove
 removefromtuple: tupledelete, tupleremove
 sample: sample
