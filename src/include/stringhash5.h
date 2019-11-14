@@ -284,6 +284,7 @@ typedef struct _stringhash5_t {
 
 typedef struct _stringhash5_walker_t {
      struct _stringhash5_t * sht;
+     uint64_t loop;
      stringhash5_visit callback;
      void * cb_vproc;
      uint32_t walker_id;
@@ -2133,9 +2134,6 @@ static inline int stringhash5_walker_next(stringhash5_walker_t * w) {
 
      uint32_t j = w->walker_id;
 
-     if (w->sht->walker_row[j] >= w->sht->all_index_size) {
-          w->sht->walker_row[j] = 0;
-     } 
      if (w->sht->is_shared) {
           SH5_LOCK(w->sht,w->sht->walker_row[j])
      }
@@ -2162,6 +2160,11 @@ static inline int stringhash5_walker_next(stringhash5_walker_t * w) {
 
      //set up structure for next read
      w->sht->walker_row[j]++;
+
+     if (w->sht->walker_row[j] >= w->sht->all_index_size) {
+          w->sht->walker_row[j] = 0;
+          w->loop++;
+     } 
 
      if (w->sht->is_shared) {
           SH5_UNLOCK(w->sht,w->sht->walker_row[j]-1)
