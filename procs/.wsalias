@@ -54,6 +54,8 @@ fixedmatch: fmatch, rightmatch
 fixedmatch: fmatch, rightmatch
 flush: flush
 flush: flush
+groupevents: groupevents
+groupevents: groupevents
 haslabel: order
 haslabel: order
 heavyhitters: heavyhitters
