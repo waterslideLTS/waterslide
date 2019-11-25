@@ -165,7 +165,7 @@ static int proc_cmd_options(int argc, char ** argv, proc_instance_t * proc) {
                break;
           case 'm':
                proc->fs->recordmax = strtoul(optarg, NULL, 0);
-               tool_print("using %"PRIu64" as max record per file", proc->fs->recordmax);
+               tool_print("using %" PRIu64 " as max record per file", proc->fs->recordmax);
                break;
           case 't':
 	       proc->fs->timeslice = sysutil_get_duration_ts(optarg);

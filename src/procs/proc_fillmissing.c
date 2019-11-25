@@ -77,6 +77,8 @@ proc_example_t proc_examples[] =  {
 //function prototypes for local functions
 static int process_tuple(void *, wsdata_t*, ws_doutput_t*, int);
 
+#define MAX_SUBTUPLE 256
+
 typedef struct _proc_instance_t {
      uint64_t meta_process_cnt;
      uint64_t outcnt;
@@ -84,8 +86,14 @@ typedef struct _proc_instance_t {
      ws_outtype_t * outtype_tuple;
      wsdata_t * wsd_newdata;
      char * new_value;
+     wslabel_nested_set_t nest_replicate;
      wslabel_set_t lset;
-     wslabel_t * label_replicate;
+
+     int subtuple_id;
+     wslabel_nested_set_ext_t nest_subtuple;
+     wslabel_t * label_subtuple[MAX_SUBTUPLE];
+
+     //wslabel_t * label_replicate;
      int as_string;
 } proc_instance_t;
 
@@ -100,7 +108,9 @@ static int proc_cmd_options(int argc, char ** argv,
                proc->as_string = 1;
                break;
           case 'R':
-               proc->label_replicate = wssearch_label(type_table, optarg);
+               //proc->label_replicate = wssearch_label(type_table, optarg);
+               wslabel_nested_search_build(type_table, &proc->nest_replicate,
+                                           optarg);
                break;
           case 'V':
                proc->new_value=optarg;
@@ -110,10 +120,28 @@ static int proc_cmd_options(int argc, char ** argv,
           }
      }
      while (optind < argc) {
-          wslabel_set_add(type_table, &proc->lset, argv[optind]);
-          wsregister_label(type_table, argv[optind]);
-          tool_print("searching for string with label %s",
-                     argv[optind]);
+          //check if nested search -- extract subtuple
+          char * search = strdup(argv[optind]);
+          char * end = search + strlen(search) - 1;
+          char * sub = rindex(search, '.');
+          if (!sub) {
+               wslabel_set_add(type_table, &proc->lset, search);
+               wsregister_label(type_table, search);
+               tool_print("searching for label %s", argv[optind]);
+          }
+          else if ((sub > search) && (sub < end) && (proc->subtuple_id < MAX_SUBTUPLE)) { 
+               sub[0] = 0;
+               sub++;
+               tool_print("searching in %s for label %s", search, sub);
+               wslabel_nested_search_build_ext(type_table, &proc->nest_subtuple,
+                                               search, proc->subtuple_id);
+               proc->label_subtuple[proc->subtuple_id] = wssearch_label(type_table,
+                                                                  sub);
+               wsregister_label(type_table, sub);
+               proc->subtuple_id++;
+          }
+          free(search);
+          
           optind++;
      }
 
@@ -173,6 +201,38 @@ proc_process_t proc_input_set(void * vinstance, wsdatatype_t * meta_type,
      return NULL;
 }
 
+static int nest_search_key(void * vproc, void * vkey,
+                           wsdata_t * tdata, wsdata_t * member) {
+     dprint("nest_search_key");
+     //proc_instance_t * proc = (proc_instance_t*)vproc;
+     wsdata_t ** pkey = (wsdata_t **)vkey;
+     wsdata_t * key = *pkey;
+     if (!key) {
+          *pkey = member;
+          return 1;
+     }
+     return 0;
+}
+static int nest_search_subtuple(void * vproc, void * vreplicate,
+                                wsdata_t * tdata, wsdata_t * subtuple,
+                                wslabel_t * label, int id) {
+     proc_instance_t * proc = (proc_instance_t*)vproc;
+     wsdata_t * replicate = (wsdata_t *) vreplicate;
+     if (id >= proc->subtuple_id) {
+          return 0;
+     }
+
+
+     wsdata_t ** mset;
+     int mset_len;
+     if (!tuple_find_label(subtuple, proc->label_subtuple[id],
+                          &mset_len, &mset)) {
+          tuple_member_add_ptr(subtuple, replicate, proc->label_subtuple[id]);
+     }
+     return 1;
+}
+
+
 //// proc processing function assigned to a specific data type in proc_io_init
 //return 1 if output is available
 // return 0 if not output
@@ -182,48 +242,31 @@ static int process_tuple(void * vinstance, wsdata_t* input_data,
      proc_instance_t * proc = (proc_instance_t*)vinstance;
 
      proc->meta_process_cnt++;
+     wsdata_t * replicate = NULL;
 
-     wsdata_t ** mset;
-     int mset_len;
+     if (proc->nest_replicate.cnt) {
+          tuple_nested_search(input_data, &proc->nest_replicate,
+                              nest_search_key,
+                              proc, &replicate);
+     }
+     if (!replicate) {
+          replicate = proc->wsd_newdata;
+     }
 
-     int found;
-     int i;
-     for (i = 0; i < proc->lset.len; i++) {
-          found = 0;
-          if (tuple_find_label(input_data, proc->lset.labels[i],
-                               &mset_len, &mset)) {
-               found = 1;
-          }
-          if (!found) {
-               if (proc->label_replicate) {
-                    wsdata_t ** submset;
-                    int submset_len;
-                    if (tuple_find_label(input_data, proc->label_replicate,
-                                         &submset_len, &submset) && submset_len) {
-                         if (proc->as_string) {
-                              char * buf = NULL;
-                              int buflen = 0;
-                              if (dtype_string_buffer(submset[0], &buf,
-                                                      &buflen)) {
-                                   wsdt_string_t * str =
-                                        tuple_member_create_wdep(input_data,
-                                                                 dtype_string,
-                                                                 proc->lset.labels[i],
-                                                                 submset[0]);
-                                   if (str) {
-                                        str->buf = buf;
-                                        str->len = buflen;
-                                   }
-                              }
-                         }
-                         else {
-                              tuple_member_add_ptr(input_data, submset[0], proc->lset.labels[i]);
-                         }
-                    }
+     if (proc->subtuple_id) {
+          tuple_nested_search_ext(input_data, &proc->nest_subtuple,
+                                  nest_search_subtuple,
+                                  proc, replicate);
+     }
+     if (proc->lset.len) {
+          wsdata_t ** mset;
+          int mset_len;
 
-               }
-               else {
-                    tuple_member_add_ptr(input_data, proc->wsd_newdata, proc->lset.labels[i]);
+          int i;
+          for (i = 0; i < proc->lset.len; i++) {
+               if (!tuple_find_label(input_data, proc->lset.labels[i],
+                                    &mset_len, &mset)) {
+                    tuple_member_add_ptr(input_data, replicate, proc->lset.labels[i]);
                }
           }
      }

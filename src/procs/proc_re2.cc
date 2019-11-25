@@ -56,7 +56,7 @@ int procbuffer_pass_not_found = 0;
 char proc_name[]       = PROC_NAME;
 char proc_version[]     = "1.5";
 const char *proc_tag[]     = { "match", NULL };
-const char *proc_alias[]     = { NULL };
+const char *proc_alias[]     = { "rex", NULL };
 char proc_purpose[]    = "performs regular expression search in buffers";
 const char *proc_synopsis[] = {
      "re2 -R <regex> [-L <label>] [-T] <LABEL of buffer to search>",
@@ -85,6 +85,10 @@ proc_option_t proc_opts[] = {
      "labels for extracted output",0,0},
      {'T',"","",
       "pass all, tag if match",0,0},
+     {'S',"","",
+      "output as strings rather than binary",0,0},
+     {'N',"","LABEL",
+      "output results in nested tuple per input",0,0},
      {' ',"","",
      "",0,0}
 };
@@ -105,9 +109,14 @@ proc_port_t proc_input_ports[] = {
 typedef struct _proc_instance_t {
      RE2 * re;
      wslabel_t * label_res[MAX_RES_ARG];
+
+     int lrescnt;
+
      RE2::Arg* res_args[MAX_RES_ARG];
      re2::StringPiece *res_str[MAX_RES_ARG];
      int num_args;
+     int output_strings;
+     wslabel_t * label_nest;
 
    int tag_output;
 
@@ -119,15 +128,17 @@ int procbuffer_instance_size = sizeof(proc_instance_t);
 static void set_res_labels(proc_instance_t * proc, char * str, void * type_table) {
      char * ptok = NULL;
 
-     int cnt = 0;
+     if (proc->lrescnt >= MAX_RES_ARG) {
+          return;
+     }
      char * rtok = strtok_r(str, DELIM, &ptok);
      while (rtok) {
           dprint("rtok %s", rtok);
           if (strlen(rtok)) {
                dprint("range %s", rtok);
-               proc->label_res[cnt] = wsregister_label(type_table, rtok);
-               cnt++;
-               if (cnt >= MAX_RES_ARG) {
+               proc->label_res[proc->lrescnt] = wsregister_label(type_table, rtok);
+               proc->lrescnt++;
+               if (proc->lrescnt >= MAX_RES_ARG) {
                     return;
                }
           }
@@ -135,7 +146,7 @@ static void set_res_labels(proc_instance_t * proc, char * str, void * type_table
      }
 }
 
-char procbuffer_option_str[]    = "L:R:T";
+char procbuffer_option_str[]    = "L:R:TSN:";
 
 int procbuffer_option(void * vproc, void * type_table,
                       int c, const char * str) {
@@ -156,9 +167,16 @@ int procbuffer_option(void * vproc, void * type_table,
                proc->num_args = MAX_RES_ARG;
           }
           break;
+     case 'S':
+          proc->output_strings = 1;
+          break;
      case 'T':
-	proc->tag_output = 1;
-	break;
+          proc->tag_output = 1;
+          break;
+     case 'N':
+          proc->label_nest =  
+               wsregister_label(type_table, optarg);
+          break;
 
      }
      return 1;
@@ -198,18 +216,29 @@ int procbuffer_decode(void * vproc, wsdata_t * tdata, wsdata_t * dep,
      re2::StringPiece res;
      argv[0] = &res;
      */
+
+     wsdata_t * nest = NULL;
      
      if (RE2::PartialMatchN(str, *proc->re, proc->res_args, proc->num_args)) {
           int i;
           for (i = 0; i < proc->num_args; i++) {
                if (proc->res_str[i]->length()) {
-                    wsdt_binary_t * bin = (wsdt_binary_t *)
-                         tuple_member_create_wdep(tdata, dtype_binary,
-                                                  proc->label_res[i],
-                                                  dep);
-                    if (bin) {
-                         bin->buf = (char *)proc->res_str[i]->data();
-                         bin->len = proc->res_str[i]->length();
+                    if (proc->label_nest && !nest) {
+                         nest = tuple_member_create_wsdata(tdata, dtype_tuple,
+                                                           proc->label_nest);
+                         tdata = nest;
+                    }
+                    if (proc->output_strings) {
+                         tuple_member_create_dep_string(tdata, dep,
+                                                        proc->label_res[i], 
+                                                        (char *)proc->res_str[i]->data(),
+                                                        proc->res_str[i]->length());
+                    }
+                    else {
+                         tuple_member_create_dep_binary(tdata, dep,
+                                                        proc->label_res[i],
+                                                        (char *)proc->res_str[i]->data(),
+                                                        proc->res_str[i]->length());
                     }
                     proc->res_str[i]->clear();
                }

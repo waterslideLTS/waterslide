@@ -682,7 +682,7 @@ int print_module_help_rst(FILE * fp, const char *spath) {
                print_rst_subheader(fp, "Examples");
                int i = 0;
                while (examples[i].text != NULL) {
-                    if (examples[i].text != '\0') {
+                    if (examples[i].text[0] != '\0') {
                          fprintf(fp, "\n"); 
                          fprintf(fp,".. code-block:: bash\n");
                          fprintf(fp, "\n"); 
@@ -915,7 +915,7 @@ int print_module_help_plain(FILE * fp, const char *spath) {
                title(fp, "EXAMPLES");
                int i = 0;
                while (examples[i].text != NULL) {
-                    if (examples[i].text != '\0') {
+                    if (examples[i].text[0] != '\0') {
                          print_wrap(fp, examples[i].text, WRAP_WIDTH, 4);
                          print_wrap(fp, examples[i].description, WRAP_WIDTH, 8);
                     }
@@ -1126,7 +1126,7 @@ int print_module_help_search(FILE * fp, const char *spath, char * keyword)  {
                title(fp, "EXAMPLES");
                int i = 0;
                while (examples[i].text != NULL) {
-                    if (examples[i].text != '\0') {
+                    if (examples[i].text[0] != '\0') {
                          char * p;
                          char * q;
                          highlight(p, (char *) examples[i].text, keyword, fp, WRAP_WIDTH, 4);

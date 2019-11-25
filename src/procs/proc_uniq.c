@@ -35,6 +35,7 @@ SOFTWARE.
 #include "waterslidedata.h"
 #include "datatypes/wsdt_tuple.h"
 #include "stringhash9a.h"
+#include "evahash64_data.h"
 #include "procloader.h"
 #include "sysutil.h"
 
@@ -154,7 +155,6 @@ typedef struct _proc_instance_t {
      int heartbeat_int;
      int do_heartbeat;
      wslabel_t * label_heartbeat;
-     wslabel_set_t lset;
      int ordered_hash;
      uint32_t hashkey;
      uint32_t count;
@@ -166,6 +166,11 @@ typedef struct _proc_instance_t {
 
      char * sharelabel;
      int sharer_id;
+     
+     wslabel_nested_set_ext_t nest;
+     int label_cnt; 
+     uint64_t * position_hash_additions;
+     //wslabel_set_t lset;
 } proc_instance_t;
 
 static int proc_cmd_options(int argc, char ** argv, 
@@ -221,8 +226,10 @@ static int proc_cmd_options(int argc, char ** argv,
           }
      }
      while (optind < argc) {
-          wslabel_set_add(type_table, &proc->lset, argv[optind]);
+          wslabel_nested_search_build_ext(type_table, &proc->nest, argv[optind],
+                                          proc->label_cnt);
           tool_print("filtering on %s", argv[optind]);
+          proc->label_cnt++;
           optind++;
      } 
      return 1;
@@ -252,6 +259,23 @@ int proc_init(wskid_t * kid, int argc, char ** argv, void ** vinstance, ws_sourc
           return 0;
      }
 
+     //preallocate hashing offsets for ordered hashing
+     if (proc->ordered_hash && proc->label_cnt) {
+          proc->position_hash_additions = calloc(proc->label_cnt,
+                                                 sizeof(uint64_t));
+
+          if (!proc->position_hash_additions) {
+               tool_print("unable to allocate hash offsets");
+               return 0;
+          }
+
+          int i;
+          for (i = 0; i < proc->label_cnt; i++) {
+               uint64_t ref = i + 0x55336677;
+               proc->position_hash_additions[i] = evahash64((uint8_t*)&ref, sizeof(uint64_t),
+                                                            proc->hashkey);
+          }
+     }
      if (proc->tstr && proc->label_tag) {
           wsdata_add_label(proc->tstr, proc->label_tag);
      }
@@ -438,63 +462,65 @@ static int proc_process_meta(void * vinstance, wsdata_t* input_data,
      return 1;
 }
 
-static inline int get_hashdata(proc_instance_t * proc,
-                               wsdata_t * m_tuple,
-                               uint8_t ** hstr, uint32_t * hlen) {
-     int i,j;
-     wsdata_t ** members;
-     int mlen;
-     int len = 0;
-     ws_hashloc_t * hashloc;
-
-     for (i = 0; i < proc->lset.len; i++) {
-          if (tuple_find_label(m_tuple, proc->lset.labels[i], &mlen, &members)) {
-               for (j = 0; j < mlen; j++) {
-                    if (members[j]->dtype->hash_func) {
-                         proc->hmembers.member[len] = members[j];
-                         if (proc->ordered_hash) {
-                              proc->hmembers.id[len] = i + proc->hashkey;
-                         }
-                         else {
-                              proc->hmembers.id[len] = proc->hashkey;
-                         }
-                         len++;
-                    }
-               }
-          }
-     }
-
-     wsdata_t * member;
-
-     if (len < 1) {
-          return 0;
-     }
-     else if (len == 1) {
-          member = proc->hmembers.member[0];
-          hashloc = member->dtype->hash_func(member);
-          if (hashloc->offset) {
-               *hstr = hashloc->offset;
-               *hlen = hashloc->len;
-          }
-          return 1;
-     }
-     //else
+//used to hash all members of a tuple
+static uint64_t local_hash_tuple(proc_instance_t * proc, wsdata_t * tdata) {
      uint64_t hash = 0;
+     wsdt_tuple_t * tuple = (wsdt_tuple_t *)tdata->data;
+
+     int len = tuple->len;
+     wsdata_t * member;
+     int i;
      for (i = 0; i < len; i++) {
-          //if multiple copies of a member exist, choose one 
-          member = proc->hmembers.member[i];
-          hashloc =
-               member->dtype->hash_func(member);
-          if (hashloc->offset) {
-               hash += evahash64(hashloc->offset,
-                                 hashloc->len,
-                                 proc->hmembers.id[i]);
+          member = tuple->member[i];
+          if (member->dtype == dtype_tuple) {
+               //recursive tuple traversal
+               hash += local_hash_tuple(proc, member);
+          }
+          else {
+               hash += evahash64_data(member, proc->hashkey);
           }
      }
-     proc->hmembers.hash = hash;
-     *hstr = (uint8_t*)&proc->hmembers.hash;
-     *hlen = sizeof(uint64_t);
+
+     return hash;
+}
+
+
+static int proc_nest_hash_element(void * vinstance, void * vhash,
+                                  wsdata_t * tdata, wsdata_t * attr,
+                                  wslabel_t * label, int id) {
+     proc_instance_t * proc = (proc_instance_t*)vinstance;
+     uint64_t * phash = (uint64_t *)vhash;
+
+     uint64_t whash = 0;
+
+
+     if (attr->dtype == dtype_tuple) {
+          whash = local_hash_tuple(proc, attr);
+     }
+     else {
+          whash = evahash64_data(attr, proc->hashkey);
+     }
+
+     if (proc->ordered_hash) {
+          whash = whash ^ proc->position_hash_additions[id];
+     }
+
+     (*phash) = (*phash) + whash;
      return 1;
+}
+
+
+static inline int get_hashdata(proc_instance_t * proc, wsdata_t * tuple,
+                               uint64_t * hash) {
+
+     int found = tuple_nested_search_ext(tuple, &proc->nest,
+                                         proc_nest_hash_element,
+                                         proc, hash);
+
+     if (found) {
+          dprint("found %d elements, hash %"PRIu64, found, *hash);
+     }
+     return found;
 }
 
 
@@ -507,11 +533,10 @@ static int process_labeled_tuple(void * vinstance, wsdata_t* input_data,
 
      proc->meta_process_cnt++;
 
-     uint8_t * hstr = NULL;
-     uint32_t hlen = 0;
+     uint64_t hash = 0;
 
-     if (!get_hashdata(proc, input_data, &hstr, &hlen) ||
-         hash_exists(proc, hstr, hlen, input_data)) {  
+     if (!get_hashdata(proc, input_data, &hash) ||
+         hash_exists(proc, &hash, sizeof(uint64_t), input_data)) {  
           return 0;
      }
 
@@ -530,12 +555,11 @@ static int set_labeled_tuple(void * vinstance, wsdata_t* input_data,
 
      proc->meta_process_cnt++;
 
-     uint8_t * hstr = NULL;
-     uint32_t hlen = 0;
+     uint64_t hash = 0;
 
-     if (get_hashdata(proc, input_data, &hstr, &hlen) && hlen) {
+     if (get_hashdata(proc, input_data, &hash)) {
           proc->set_cnt++;
-          stringhash9a_set(proc->uniq_table, hstr, hlen);
+          stringhash9a_set(proc->uniq_table, &hash, sizeof(uint64_t));
      }
      return 0;
 }
@@ -546,11 +570,10 @@ static int remove_labeled_tuple(void * vinstance, wsdata_t* input_data,
 
      proc->meta_process_cnt++;
 
-     uint8_t * hstr = NULL;
-     uint32_t hlen = 0;
+     uint64_t hash = 0;
 
-     if (get_hashdata(proc, input_data, &hstr, &hlen) && hlen) {
-          stringhash9a_delete(proc->uniq_table, hstr, hlen);
+     if (get_hashdata(proc, input_data, &hash)) {
+          stringhash9a_delete(proc->uniq_table, &hash, sizeof(uint64_t));
      }
      return 0;
 }
@@ -560,15 +583,15 @@ static int query_labeled_tuple(void * vinstance, wsdata_t* input_data,
      proc_instance_t * proc = (proc_instance_t*)vinstance;
 
      proc->meta_process_cnt++;
-     uint8_t * hstr = NULL;
-     uint32_t hlen = 0;
+     
+     uint64_t hash = 0;
 
-     if (!get_hashdata(proc, input_data, &hstr, &hlen)) {
+     if (!get_hashdata(proc, input_data, &hash)) {
           return 0;
      }
 
      if (stringhash9a_check(proc->uniq_table,
-                           hstr, hlen)) {
+                           &hash, sizeof(uint64_t))) {
           return 0;
      }
 
@@ -585,16 +608,15 @@ static int invquery_labeled_tuple(void * vinstance, wsdata_t* input_data,
 
      proc->meta_process_cnt++;
 
-     uint8_t * hstr = NULL;
-     uint32_t hlen = 0;
+     uint64_t hash = 0;
 
-     if (!get_hashdata(proc, input_data, &hstr, &hlen)) {
+     if (!get_hashdata(proc, input_data, &hash)) {
           return 0;
      }
 
      proc->iquery_cnt++;
      if (!stringhash9a_check(proc->uniq_table,
-                           hstr, hlen)) {
+                             &hash, sizeof(uint64_t))) {
           return 0;
      }
 
@@ -609,15 +631,15 @@ static int dupes_labeled_tuple(void * vinstance, wsdata_t* input_data,
      proc_instance_t * proc = (proc_instance_t*)vinstance;
 
      proc->meta_process_cnt++;
-     uint8_t * hstr = NULL;
-     uint32_t hlen = 0;
+     
+     uint64_t hash = 0;
 
-     if (!get_hashdata(proc, input_data, &hstr, &hlen)) {
+     if (!get_hashdata(proc, input_data, &hash)) {
           return 0;
      }
 
      if (stringhash9a_set(proc->uniq_table,
-                          hstr, hlen)) {
+                          &hash, sizeof(uint64_t))) {
           ws_set_outdata(input_data, proc->outtype_meta[type_index], dout);
           proc->outcnt++;
           return 1;
@@ -631,13 +653,13 @@ static int tag_labeled_tuple(void * vinstance, wsdata_t* input_data,
      proc_instance_t * proc = (proc_instance_t*)vinstance;
 
      proc->meta_process_cnt++;
-     uint8_t * hstr = NULL;
-     uint32_t hlen = 0;
+     
+     uint64_t hash = 0;
 
-     if (get_hashdata(proc, input_data, &hstr, &hlen)) {
+     if (get_hashdata(proc, input_data, &hash)) {
 
           if (stringhash9a_check(proc->uniq_table,
-                                 hstr, hlen)) {
+                                 &hash, sizeof(uint64_t))) {
 
                if (proc->tstr) {
                     add_tuple_member(input_data, proc->tstr);
@@ -739,8 +761,15 @@ int proc_destroy(void * vinstance) {
      stringhash9a_destroy(proc->uniq_table);
 
      //free dynamic allocations
-     free(proc->sharelabel);
-     free(proc->dump_file);
+     if (proc->sharelabel) {
+          free(proc->sharelabel);
+     }
+     if (proc->dump_file) {
+          free(proc->dump_file);
+     }
+     if (proc->position_hash_additions) {
+          free(proc->position_hash_additions);
+     }
      free(proc);
 
      return 1;

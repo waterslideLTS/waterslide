@@ -226,7 +226,9 @@ int proc_init(wskid_t * kid, int argc, char ** argv, void ** vinstance, ws_sourc
      //use the stringhash5-adjusted value of max_records to reset tablemax
      proc->tablemax = proc->key_table->max_records;
 
-     free(proc->open_table);
+     if (proc->open_table) {
+          free(proc->open_table);
+     }
 
      if (!proc->lset.len) {
           tool_print("must specify key to process");
@@ -369,8 +371,12 @@ int proc_destroy(void * vinstance) {
      stringhash5_destroy(proc->key_table);
 
      //free dynamic allocations
-     free(proc->sharelabel);
-     free(proc->outfile);
+     if (proc->sharelabel) {
+          free(proc->sharelabel);
+     }
+     if (proc->outfile) {
+          free(proc->outfile);
+     }
      free(proc);
 
      return 1;

@@ -59,6 +59,8 @@ proc_option_t proc_opts[] = {
      "label of tuple member to add label",0,0},
      {'R',"","",
      "create a pointer to member with just the new label and all other labels removed",0,0},
+     {'P',"","",
+     "create a pointer to member with just the new label, attach to root tuple",0,0},
      {'e',"","",
      "add label to empty member (no subtuples)",0,0},
      //the following must be left as-is to signify the end of the array
@@ -91,6 +93,7 @@ typedef struct _proc_instance_t {
      wslabel_t * label_tmember;
      wslabel_t * label;
      int relabel;
+     int attach_root;
      int add2empty;
 } proc_instance_t;
 
@@ -98,11 +101,14 @@ static int proc_cmd_options(int argc, char ** argv,
                             proc_instance_t * proc, void * type_table) {
      int op;
 
-     while ((op = getopt(argc, argv, "eRm:")) != EOF) {
+     while ((op = getopt(argc, argv, "PeRm:")) != EOF) {
           switch (op) {
           case 'e':
                proc->add2empty = 1;
                break;
+          case 'P':
+               proc->attach_root = 1;
+               //intentional fallthrough
           case 'R':
                proc->relabel = 1;
                break;
@@ -250,12 +256,18 @@ static int proc_relabel(void * vinstance, wsdata_t* input_data,
 }
 
 //callback when searching nested tuple
-static int proc_nest_match_callback(void * vproc, void * vtdata,
+static int proc_nest_match_callback(void * vproc, void * vroot,
                                     wsdata_t * subtdata, wsdata_t * member) {
      proc_instance_t * proc = (proc_instance_t*)vproc;
+     wsdata_t * root = (wsdata_t *)vroot;
 
      if (proc->relabel) {
-          tuple_member_add_ptr(subtdata, member, proc->label);
+          if (proc->attach_root) {
+               tuple_member_add_ptr(root, member, proc->label);
+          }
+          else {
+               tuple_member_add_ptr(subtdata, member, proc->label);
+          }
      }
      else if (!wsdata_check_label(member, proc->label)) {
           tuple_add_member_label(subtdata, member, proc->label);

@@ -61,6 +61,8 @@ proc_option_t proc_opts[] = {
 	 "option description", <allow multiple>, <required>*/
      {'A',"","",
      "append denested strings to existing tuple",0,0},
+     {'S',"","LABEL",
+     "put extracted items into new nested tuple",0,0},
      {'L',"","LABEL",
      "apply label to denested elements",0,0},
      //the following must be left as-is to signify the end of the array
@@ -81,6 +83,7 @@ typedef struct _proc_instance_t {
      wslabel_nested_set_t nest;
      int append;
      wslabel_t * label_apply;
+     wslabel_t * label_subtuple;
 } proc_instance_t;
 
 static int proc_cmd_options(int argc, char ** argv, 
@@ -88,8 +91,12 @@ static int proc_cmd_options(int argc, char ** argv,
                             void * type_table) {
      int op;
 
-     while ((op = getopt(argc, argv, "AaL:")) != EOF) {
+     while ((op = getopt(argc, argv, "s:S:AaL:")) != EOF) {
           switch (op) {
+          case 'S':
+          case 's':
+               proc->label_subtuple = wsregister_label(type_table, optarg);
+               //intentionally fall through
           case 'A':
           case 'a':
                proc->append = 1;
@@ -194,7 +201,14 @@ static int process_tuple(void * vinstance, wsdata_t* input_data,
      proc->meta_process_cnt++;
 
      wsdata_t * newtupledata;
-     if (proc->append) {
+     if (proc->label_subtuple) {
+          newtupledata = tuple_member_create_wsdata(input_data, dtype_tuple,
+                                                    proc->label_subtuple);
+          if (!newtupledata) {
+               return 0;
+          }
+     }
+     else if (proc->append) {
           newtupledata = input_data;
      }
      else {
@@ -210,7 +224,7 @@ static int process_tuple(void * vinstance, wsdata_t* input_data,
                          proc, newtupledata);
 
      if (proc->append) {
-          ws_set_outdata(newtupledata, proc->outtype_tuple, dout);
+          ws_set_outdata(input_data, proc->outtype_tuple, dout);
           proc->outcnt++;
      }
      else {
