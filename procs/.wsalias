@@ -38,6 +38,8 @@ dupetuple: dtuple, duptup, tupdup
 dupetuple: dtuple, duptup, tupdup
 encodebase64: encodebase64
 encodebase64: encodebase64
+entropy: ent, chisqr
+entropy: ent, chisqr
 equal: equal
 equal: equal
 exactmatch: ematch
