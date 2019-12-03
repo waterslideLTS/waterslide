@@ -43,6 +43,8 @@ char proc_purpose[]    = "place selected elements into a new subtuple";
 proc_option_t proc_opts[] = {
      /*  'option character', "long option string", "option argument",
 	 "option description", <allow multiple>, <required>*/
+     {'A',"","tuple LABEL",
+     "append items (except tuples) into existing labeled tuple",0,0},
      {'L',"","LABEL",
      "apply label to denested elements",0,0},
      //the following must be left as-is to signify the end of the array
@@ -60,9 +62,10 @@ typedef struct _proc_instance_t {
      uint64_t meta_process_cnt;
      uint64_t outcnt;
 
+     wslabel_nested_set_t appendset;
+     int append;
      ws_outtype_t * outtype_tuple;
      wslabel_nested_set_t nest;
-     int append;
      wslabel_t * label_apply;
 } proc_instance_t;
 
@@ -71,10 +74,17 @@ static int proc_cmd_options(int argc, char ** argv,
                             void * type_table) {
      int op;
 
-     while ((op = getopt(argc, argv, "L:")) != EOF) {
+     while ((op = getopt(argc, argv, "a:A:L:")) != EOF) {
           switch (op) {
+          case 'a':
+          case 'A':
+               proc->append = 1;
+               wslabel_nested_search_build(type_table, &proc->appendset, optarg);
+               tool_print("using %s tuple for appending", optarg);
+               break;
           case 'L':
                proc->label_apply = wsregister_label(type_table, optarg);
+               tool_print("creating new tuple %s", optarg);
                break;
           default:
                return 0;
@@ -136,12 +146,41 @@ proc_process_t proc_input_set(void * vinstance, wsdatatype_t * meta_type,
      return NULL;
 }
 
+static int proc_nest_find_append(void * vproc, void * vnewtup,
+                                 wsdata_t * tdata, wsdata_t * member) {
+
+     //proc_instance_t * proc = (proc_instance_t *)vproc;
+     wsdata_t ** newtup = (wsdata_t **)vnewtup;
+     dprint("proc_nest_find_append");
+
+     if (member->dtype != dtype_tuple) {
+          dprint("member not a tuple");
+          dprint("member is a %s type", member->dtype->name);
+          return 0;
+     }
+
+     dprint("member is a tuple");
+     *newtup = member;
+
+     return 1;
+}
+
+
 static int proc_nest_tuple(void * vproc, void * vnewtup,
                          wsdata_t * tdata, wsdata_t * member) {
 
-     //proc_instance_t * proc = (proc_instance_t *)vproc;
+     proc_instance_t * proc = (proc_instance_t *)vproc;
      wsdata_t * newtup = (wsdata_t *)vnewtup;
 
+     dprint("proc_nest_tuple");
+     if (proc->append) {
+          //tuples cannot be appended - to avoid nested dependency recusion
+          if (member->dtype == dtype_tuple) {
+               dprint("member is a tuple - cannot append");
+               return 0;
+          }
+          dprint("member not a tuple - can append");
+     }
      add_tuple_member(newtup, member);
 
      return 1;
@@ -154,28 +193,48 @@ static int process_tuple(void * vinstance, wsdata_t* input_data,
                          ws_doutput_t * dout, int type_index) {
 
      proc_instance_t * proc = (proc_instance_t*)vinstance;
+     dprint("--process_tuple--------");
 
      proc->meta_process_cnt++;
 
-     wsdata_t * newtupledata;
-     newtupledata = ws_get_outdata(proc->outtype_tuple);
+     wsdata_t * newtupledata = NULL;
 
-     if (!newtupledata) {
-          return 0;
+     if (proc->append) {
+          dprint("doing append");
+          tuple_nested_search(input_data, &proc->appendset,
+                              proc_nest_find_append,
+                              proc, &newtupledata);
+          dprint("done searching for tuple to append");
+          if (!newtupledata) {
+               dprint("appending tuple not found");
+               ws_set_outdata(input_data, proc->outtype_tuple, dout);
+               proc->outcnt++;
+               return 0;
+          }
      }
+     else {
+          newtupledata = ws_get_outdata(proc->outtype_tuple);
+
+          if (!newtupledata) {
+               return 0;
+          }
+     }
+
 
      tuple_nested_search(input_data, &proc->nest,
                          proc_nest_tuple,
                          proc, newtupledata);
 
      //find out how many elements in new tuple
-     wsdt_tuple_t * tup = (wsdt_tuple_t *)newtupledata->data;
-     if (!tup->len) {
-          wsdata_delete(newtupledata);
-     }
-     else {
-          wsdata_add_label(newtupledata, proc->label_apply);
-          add_tuple_member(input_data, newtupledata);
+     if (!proc->append) {
+          wsdt_tuple_t * tup = (wsdt_tuple_t *)newtupledata->data;
+          if (!tup->len) {
+               wsdata_delete(newtupledata);
+          }
+          else {
+               wsdata_add_label(newtupledata, proc->label_apply);
+               add_tuple_member(input_data, newtupledata);
+          }
      }
 
      ws_set_outdata(input_data, proc->outtype_tuple, dout);
