@@ -36,8 +36,12 @@ dupestring: dupestring
 dupestring: dupestring
 dupetuple: dtuple, duptup, tupdup
 dupetuple: dtuple, duptup, tupdup
+editdistance: levenshtein, editdist
+editdistance: levenshtein, editdist
 encodebase64: encodebase64
 encodebase64: encodebase64
+entropy: ent, chisqr
+entropy: ent, chisqr
 equal: equal
 equal: equal
 exactmatch: ematch
