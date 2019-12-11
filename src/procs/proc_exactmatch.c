@@ -691,8 +691,12 @@ int proc_destroy(void * vinstance) {
      stringhash9a_destroy(proc->exactmatch_table);
 
      //free dynamic allocations
-     free(proc->sharelabel);
-     free(proc->dump_file);
+     if (proc->sharelabel) {
+          free(proc->sharelabel);
+     }
+     if (proc->dump_file) {
+          free(proc->dump_file);
+     }
      free(proc);
 
      return 1;

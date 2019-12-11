@@ -418,8 +418,12 @@ int proc_destroy(void * vinstance) {
      stringhash5_destroy(proc->key_table);
 
      //free dynamic allocations
-     free(proc->sharelabel);
-     free(proc->strlabel);
+     if (proc->sharelabel) {
+          free(proc->sharelabel);
+     }
+     if (proc->strlabel) {
+          free(proc->strlabel);
+     }
      free(proc);
 
      return 1;
