@@ -172,6 +172,7 @@ static int proc_cmd_options(int argc, char ** argv,
                return 0;
           }
      }
+     rd_kafka_conf_set_default_topic_conf(proc->conf, proc->topic_conf);
      if (optind < argc) {
           proc->topics = rd_kafka_topic_partition_list_new(argc - optind);
      }
@@ -284,7 +285,6 @@ int proc_init(wskid_t * kid, int argc, char ** argv, void ** vinstance, ws_sourc
                              NULL, 0);
      rd_kafka_topic_conf_set(proc->topic_conf, "offset.store.method",
                              "broker", NULL, 0);
-     rd_kafka_conf_set_default_topic_conf(proc->conf, proc->topic_conf);
 
      proc->brokers = "localhost:9092";
 
