@@ -539,8 +539,12 @@ int proc_destroy(void * vinstance) {
      }
 
      //free dynamic allocations
-     free(proc->sharelabel);
-     free(proc->sharelabel5);
+     if (proc->sharelabel) {
+          free(proc->sharelabel);
+     }
+     if (proc->sharelabel5) {
+          free(proc->sharelabel5);
+     }
      free(proc);
 
      return 1;

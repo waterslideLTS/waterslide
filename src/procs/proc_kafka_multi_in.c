@@ -27,7 +27,7 @@
  */
 
 /**
- * Apache Kafka consumer & producer performance tester
+ * Apache Kafka consumer
  * using the Kafka driver from librdkafka
  * (https://github.com/edenhill/librdkafka)
  */
@@ -71,6 +71,8 @@ proc_option_t proc_opts[] = {
      "consumer group",0,0},
      {'S',"","",
      "detect if buffer is ascii strings",0,0},
+     {'X',"","key=value",
+     "set kafka config option",0,0},
      //the following must be left as-is to signify the end of the array
      {' ',"","",
      "",0,0}
@@ -106,12 +108,42 @@ typedef struct _proc_instance_t {
      int stringdetect;
 } proc_instance_t;
 
+
+static int handle_kafka_config_option(proc_instance_t * proc, char * kv) {
+     char * key = kv;
+     char * value = strchr(kv,'=');
+     if (!value || (key == value)) {
+          tool_print("invalid key=value combination");
+          return 0; //invalid key=value combination
+     }
+
+     //split into two strings: key and value
+     value[0] = 0;   //convert = to null
+     value++;
+
+     rd_kafka_conf_res_t res;
+
+     res = rd_kafka_topic_conf_set(proc->topic_conf, key, value, NULL, 0);
+
+     //if not topic config -- try general config
+     if (res == RD_KAFKA_CONF_UNKNOWN) {
+          res = rd_kafka_conf_set(proc->conf, key, value, NULL, 0);
+     }
+     if (res != RD_KAFKA_CONF_OK) {
+          tool_print("INVALID kafka config option %s=%s", key, value);
+          return 0;
+     }
+     tool_print("setting kafka config option %s=%s", key, value);
+     return 1;
+}
+
+
 static int proc_cmd_options(int argc, char ** argv, 
                              proc_instance_t * proc, void * type_table) {
 
      int op;
 
-     while ((op = getopt(argc, argv, "g:Sb:p:L:")) != EOF) {
+     while ((op = getopt(argc, argv, "X:g:Sb:p:L:")) != EOF) {
           switch (op) {
           case 'g':
                proc->group = optarg;
@@ -130,6 +162,12 @@ static int proc_cmd_options(int argc, char ** argv,
           case 'S':
                proc->stringdetect = 1;
                break;
+          case 'X':
+               if (!handle_kafka_config_option(proc, optarg)) {
+                    error_print("invalid kafka option");
+                    return 0;
+               }
+               break; 
           default:
                return 0;
           }
