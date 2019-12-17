@@ -243,14 +243,14 @@ static void rebalance_cb (rd_kafka_t *rk,
 }
 
 static void err_cb (rd_kafka_t *rk, int err, const char *reason, void *opaque) {
-	printf("%% ERROR CALLBACK: %s: %s: %s\n",
+	fprintf(stderr, "%% ERROR CALLBACK: %s: %s: %s\n",
 	       rd_kafka_name(rk), rd_kafka_err2str(err), reason);
 }
 
 static void throttle_cb (rd_kafka_t *rk, const char *broker_name,
 			 int32_t broker_id, int throttle_time_ms,
 			 void *opaque) {
-	printf("%% THROTTLED %dms by %s (%"PRId32")\n", throttle_time_ms,
+	fprintf(stderr, "%% THROTTLED %dms by %s (%"PRId32")\n", throttle_time_ms,
 	       broker_name, broker_id);
 }
                                         
