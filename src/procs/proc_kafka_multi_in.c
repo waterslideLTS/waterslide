@@ -172,6 +172,7 @@ static int proc_cmd_options(int argc, char ** argv,
                return 0;
           }
      }
+     rd_kafka_conf_set_default_topic_conf(proc->conf, proc->topic_conf);
      if (optind < argc) {
           proc->topics = rd_kafka_topic_partition_list_new(argc - optind);
      }
@@ -242,14 +243,14 @@ static void rebalance_cb (rd_kafka_t *rk,
 }
 
 static void err_cb (rd_kafka_t *rk, int err, const char *reason, void *opaque) {
-	printf("%% ERROR CALLBACK: %s: %s: %s\n",
+	fprintf(stderr, "%% ERROR CALLBACK: %s: %s: %s\n",
 	       rd_kafka_name(rk), rd_kafka_err2str(err), reason);
 }
 
 static void throttle_cb (rd_kafka_t *rk, const char *broker_name,
 			 int32_t broker_id, int throttle_time_ms,
 			 void *opaque) {
-	printf("%% THROTTLED %dms by %s (%"PRId32")\n", throttle_time_ms,
+	fprintf(stderr, "%% THROTTLED %dms by %s (%"PRId32")\n", throttle_time_ms,
 	       broker_name, broker_id);
 }
                                         
@@ -284,7 +285,6 @@ int proc_init(wskid_t * kid, int argc, char ** argv, void ** vinstance, ws_sourc
                              NULL, 0);
      rd_kafka_topic_conf_set(proc->topic_conf, "offset.store.method",
                              "broker", NULL, 0);
-     rd_kafka_conf_set_default_topic_conf(proc->conf, proc->topic_conf);
 
      proc->brokers = "localhost:9092";
 

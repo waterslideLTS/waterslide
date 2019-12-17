@@ -120,10 +120,16 @@ proc_kafka_multi_in$(WS_SFX): proc_kafka_multi_in.c
 	$(SHOWFILE) 
 	$(CC) $(CFLAGS) $< -o $@ -lrdkafka $(LDFLAGS)
 	$(INSTALL) $@ $(WS_PROCS_DIR)
+proc_kafka_out$(WS_SFX): proc_kafka_out.c
+	$(SHOWFILE) 
+	$(CC) $(CFLAGS) $< -o $@ -lrdkafka $(LDFLAGS)
+	$(INSTALL) $@ $(WS_PROCS_DIR)
 else
 proc_kafka_in$(WS_SFX): proc_kafka_in.c
 	@echo " not building $@, need librdkafka, set HASRDKAFKA=1 to build"
 proc_kafka_multi_in$(WS_SFX): proc_kafka_multi_in.c
+	@echo " not building $@, need librdkafka, set HASRDKAFKA=1 to build"
+proc_kafka_out$(WS_SFX): proc_kafka_out.c
 	@echo " not building $@, need librdkafka, set HASRDKAFKA=1 to build"
 endif
 
