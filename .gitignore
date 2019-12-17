@@ -21,6 +21,7 @@
 
 /procs/*.ws_so
 /procs/*.wsp_so
+/procs/.wsalias
 
 /src/datatypes/*.ws_so
 /src/datatypes/*.wsp_so
