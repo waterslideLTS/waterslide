@@ -96,6 +96,7 @@ typedef struct _proc_instance_t {
      wslabel_t * label_buf;
      wslabel_t * label_tuple;
      wslabel_t * label_topic;
+     wslabel_t * label_partition;
      wslabel_t * label_datetime;
 
      rd_kafka_t *rk;
@@ -271,6 +272,7 @@ int proc_init(wskid_t * kid, int argc, char ** argv, void ** vinstance, ws_sourc
      proc->label_buf = wsregister_label(type_table, "BUF");
      proc->label_tuple = wsregister_label(type_table, "KAFKA");
      proc->label_topic = wsregister_label(type_table, "TOPIC");
+     proc->label_partition = wsregister_label(type_table, "PARTITION");
      proc->label_datetime = wsregister_label(type_table, "DATETIME");
 
      snprintf(proc->group_default,GRP_MAX,"%s:%d", PROC_NAME, rand());
@@ -422,6 +424,8 @@ static void msg_consume (rd_kafka_message_t *rkmessage, void *vproc) {
                tuple_dupe_binary(tuple, proc->label_buf, (char *)rkmessage->payload,
                                  (int)rkmessage->len);
           }
+          tuple_member_create_int(tuple, rkmessage->partition,
+                                  proc->label_partition);
 
           ws_set_outdata(tuple, proc->outtype_tuple, proc->dout);
           proc->outcnt++;
