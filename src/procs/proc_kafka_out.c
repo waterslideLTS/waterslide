@@ -59,6 +59,8 @@ proc_option_t proc_opts[] = {
      "item in tuple to be used as a key for kafka partitioning",0,0},
      {'X',"","option",
      "special kafka option for additional tuning and configuration",0,0},
+     {'w',"","seconds",
+     "set how many seconds to wait to flush kafka enqueue buffers during flush",0,0},
      //the following must be left as-is to signify the end of the array
      {' ',"","",
      "",0,0}
@@ -83,6 +85,8 @@ typedef struct _proc_instance_t {
      char * tasks;
      char * brokers;
      char * topic;
+
+     int flush_wait_sec;
 
      uint64_t enqueued;
      uint64_t enqueue_fail;
@@ -145,8 +149,14 @@ static int proc_cmd_options(int argc, char ** argv,
 
      int op;
 
-     while ((op = getopt(argc, argv, "T:t:B:b:x:X:K:k:")) != EOF) {
+     while ((op = getopt(argc, argv, "w:T:t:B:b:x:X:K:k:")) != EOF) {
           switch (op) {
+          case 'W':
+          case 'w':
+               proc->flush_wait_sec = atoi(optarg);
+               tool_print("waiting up to %d seconds to flush kafka output queue",
+                          proc->flush_wait_sec);
+               break;
           case 'T':
           case 't':
                proc->topic = optarg;
@@ -226,6 +236,9 @@ int proc_init(wskid_t * kid, int argc, char ** argv, void ** vinstance, ws_sourc
      proc_instance_t * proc =
           (proc_instance_t*)calloc(1,sizeof(proc_instance_t));
      *vinstance = proc;
+
+
+     proc->flush_wait_sec = 10; //wait up to 10 seconds
 
      proc->label_enqueued = wsregister_label(type_table, "ENQUEUED");
      proc->label_enqueue_fail = wsregister_label(type_table, "ENQUEUE_FAIL");
@@ -441,14 +454,16 @@ static int proc_flush(void * vinstance, wsdata_t* source_data,
      fprintf(stderr,
              "%% Flushing Kafka final %d messages..\n",
              rd_kafka_outq_len(proc->rk));
-     rd_kafka_flush(proc->rk, 5*1000 /* wait for max 6 seconds */);
+     rd_kafka_flush(proc->rk, proc->flush_wait_sec * 1000 /* wait for max t seconds */);
      tool_print("finished flushing kafka producer");
 
      /* If the output queue is still not empty there is an issue
       * with producing messages to the clusters. */
-     if (rd_kafka_outq_len(proc->rk) > 0) {
-          fprintf(stderr, "%% %d message(s) were not delivered\n",
-                  rd_kafka_outq_len(proc->rk));
+     int leftover = rd_kafka_outq_len(proc->rk);
+     if (leftover > 0) {
+          fprintf(stderr, "%% %d message(s) were probably not delivered\n",
+                  leftover);
+          proc->delivery_fail += leftover;
      }
      return 1;
 }

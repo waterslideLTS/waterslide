@@ -27,7 +27,7 @@
  */
 
 /**
- * Apache Kafka consumer
+ * based on librdkafka Apache Kafka consumer example
  * using the Kafka driver from librdkafka
  * (https://github.com/edenhill/librdkafka)
  */
@@ -199,7 +199,7 @@ static int proc_cmd_options(int argc, char ** argv,
 
      return 1;
 }
-/*
+
 static void print_partition_list (FILE *fp,
                                   const rd_kafka_topic_partition_list_t
                                   *partitions) {
@@ -211,9 +211,10 @@ static void print_partition_list (FILE *fp,
                   partitions->elems[i].partition,
                   partitions->elems[i].offset);
      }
-     fprintf(stderr, "\n");
-
-}*/
+     if (i) {
+          fprintf(stderr, "\n");
+     }
+}
 
 static void rebalance_cb (rd_kafka_t *rk,
                           rd_kafka_resp_err_t err,
@@ -225,13 +226,13 @@ static void rebalance_cb (rd_kafka_t *rk,
      switch (err) {
      case RD_KAFKA_RESP_ERR__ASSIGN_PARTITIONS:
           tool_print("      assigned");
-          //print_partition_list(stderr, partitions);
+          print_partition_list(stderr, partitions);
           rd_kafka_assign(proc->rk, partitions);
           break;
 
      case RD_KAFKA_RESP_ERR__REVOKE_PARTITIONS:
           tool_print("      revoked");
-          //print_partition_list(stderr, partitions);
+          print_partition_list(stderr, partitions);
           rd_kafka_assign(proc->rk, NULL);
           break;
 
@@ -370,7 +371,7 @@ static void msg_consume (rd_kafka_message_t *rkmessage, void *vproc) {
                return;
           }
 
-		printf("%% Consume error for topic \"%s\" [%"PRId32"] "
+		fprintf(stderr,"%% Consume error for topic \"%s\" [%"PRId32"] "
 		       "offset %"PRId64": %s\n",
 		       rkmessage->rkt ? rd_kafka_topic_name(rkmessage->rkt):"",
 		       rkmessage->partition,
@@ -458,7 +459,7 @@ static int data_source(void * vinstance, wsdata_t* source_data,
 //return 0 if no..
 int proc_destroy(void * vinstance) {
      proc_instance_t * proc = (proc_instance_t*)vinstance;
-     tool_print("meta_proc cnt %" PRIu64, proc->meta_process_cnt);
+     tool_print("polling loop cnt %" PRIu64, proc->meta_process_cnt);
      tool_print("output cnt %" PRIu64, proc->outcnt);
 
      if (proc->rk) {
