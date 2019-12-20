@@ -124,6 +124,8 @@ proc_option_t proc_opts[] = {
 //     "max bytes per file",0,0},
      {'d',"","drop",
       "don't include label used in filespec",0,0},
+     {'f',"","",
+      "flush output after each print",0,0},
      //the following must be left as-is to signify the end of the array
      {' ',"","",
      "",0,0}
@@ -160,6 +162,7 @@ typedef struct _proc_instance_t {
      int do_json;
      int print_only_first_label;
      int print_only_last_label;
+     int flush_after_print;
 } proc_instance_t;
 
 static int proc_cmd_options(int argc, char ** argv, 
@@ -167,8 +170,11 @@ static int proc_cmd_options(int argc, char ** argv,
      int op;
      int A_opt = 0, O_opt = 0;
 
-     while ((op = getopt(argc, argv, "21EJRXHw:VSs:LbA:O:t:v:m:TdD")) != EOF) {
+     while ((op = getopt(argc, argv, "f21EJRXHw:VSs:LbA:O:t:v:m:TdD")) != EOF) {
           switch (op) {
+          case 'f':
+               proc->flush_after_print = 1;
+               break;
           case '2':
                proc->print_only_last_label = 1;
                break;
@@ -836,6 +842,10 @@ static int proc_json(void * vinstance, wsdata_t* input_data,
      if (ws_check_subscribers(proc->outtype_meta[type_index])) {
           ws_set_outdata(input_data, proc->outtype_meta[type_index], dout);
           proc->outcnt++;
+     }
+
+     if (proc->flush_after_print) {
+          fflush(proc->outfp);
      }
      return 0;
 }
