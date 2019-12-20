@@ -209,6 +209,9 @@ int procbuffer_init(void * vproc, void * type_table) {
 
 int procbuffer_decode(void * vproc, wsdata_t * tdata, wsdata_t * dep,
                       uint8_t * buf, int len) {
+     if (!len) {
+          return 0;
+     }
      proc_instance_t * proc = (proc_instance_t *)vproc;
      re2::StringPiece str((const char *)buf, len);
      /*RE2::Arg argv[2];
