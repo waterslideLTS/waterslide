@@ -262,6 +262,7 @@ static int print_json_string(proc_instance_t * proc, char * outbuf, int outlen,
                }
                offset += copy_check_fail(proc, outbuf, outlen, offset,
                                          jstr, 2, fail);
+               prior = i + 1;
           }
      }
      if (prior < slen) {
@@ -460,7 +461,9 @@ static int est_json_label(proc_instance_t * proc, wsdata_t * member) {
           int i;
           for (i = 0; i < member->label_len; i++) {
                est += strlen(member->labels[i]->name);
-               est += (i>0) ? 1: 0;
+               if (i > 0) {
+                    est ++;;
+               }
           }
           return est;
      }
@@ -468,7 +471,7 @@ static int est_json_label(proc_instance_t * proc, wsdata_t * member) {
 static int est_json_tuple(proc_instance_t * proc, wsdata_t * tdata);
 
 static int est_json_string(proc_instance_t * proc, char * str, int slen) {
-     int est = 2;
+     int est = 2 + slen;
      int i;
      for (i = 0; i < slen; i++) {
           switch(str[i]) {
@@ -480,8 +483,6 @@ static int est_json_string(proc_instance_t * proc, char * str, int slen) {
           case '\n':
           case '\t':
           case '\\':
-               est += 2;
-          default:
                est += 1;
           }
      }
@@ -581,6 +582,7 @@ static int estimate_json_buffer(proc_instance_t * proc, wsdata_t * tuple) {
      if (tuple->label_len) {
           est += 4;
           est += est_json_label(proc, tuple);
+          est += est_json_tuple(proc, tuple);
      }
      else {
           est += 2;
