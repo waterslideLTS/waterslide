@@ -80,11 +80,13 @@ proc_option_t proc_opts[] = {
 
 //function prototypes for local functions
 static int data_source(void *, wsdata_t*, ws_doutput_t*, int);
+static int proc_stats(void *, wsdata_t*, ws_doutput_t*, int);
 
 #define GRP_MAX 64
 typedef struct _proc_instance_t {
      uint64_t meta_process_cnt;
      uint64_t outcnt;
+     uint64_t outlen;
 
      ws_outtype_t * outtype_tuple;
      char * tasks;
@@ -98,6 +100,8 @@ typedef struct _proc_instance_t {
      wslabel_t * label_topic;
      wslabel_t * label_partition;
      wslabel_t * label_datetime;
+     wslabel_t * label_outcnt;
+     wslabel_t * label_outlen;
 
      rd_kafka_t *rk;
 	rd_kafka_conf_t *conf;
@@ -274,6 +278,8 @@ int proc_init(wskid_t * kid, int argc, char ** argv, void ** vinstance, ws_sourc
      proc->label_topic = wsregister_label(type_table, "TOPIC");
      proc->label_partition = wsregister_label(type_table, "PARTITION");
      proc->label_datetime = wsregister_label(type_table, "DATETIME");
+     proc->label_outcnt = wsregister_label(type_table, "KAFKA_IN_COUNT");
+     proc->label_outlen = wsregister_label(type_table, "KAFKA_IN_OUTBYTES");
 
      snprintf(proc->group_default,GRP_MAX,"%s:%d", PROC_NAME, rand());
      proc->group = proc->group_default;
@@ -357,6 +363,17 @@ proc_process_t proc_input_set(void * vinstance, wsdatatype_t * input_type,
                               wslabel_t * port,
                               ws_outlist_t* olist, int type_index,
                               void * type_table) {
+     proc_instance_t * proc = (proc_instance_t*)vinstance;
+     if ((input_type == dtype_tuple) && 
+         (wslabel_match(type_table, port, "STAT") ||
+          wslabel_match(type_table, port, "TRIGGER") ||
+          wslabel_match(type_table, port, "STATS"))) {
+          if (!proc->outtype_tuple) {
+               proc->outtype_tuple = ws_add_outtype(olist, dtype_tuple, NULL);
+          }
+          return proc_stats;
+     }
+
      return NULL;
 }
 
@@ -429,6 +446,7 @@ static void msg_consume (rd_kafka_message_t *rkmessage, void *vproc) {
 
           ws_set_outdata(tuple, proc->outtype_tuple, proc->dout);
           proc->outcnt++;
+          proc->outlen += rkmessage->len;
 
      }
      dprint("payload> %.*s\n",
@@ -456,6 +474,19 @@ static int data_source(void * vinstance, wsdata_t* source_data,
           rd_kafka_message_destroy(rkmessage);
      }
 
+     return 1;
+}
+
+//append current stats when a stats tuple is sent on the STAT port 
+static int proc_stats(void * vinstance, wsdata_t* input_data,
+                      ws_doutput_t * dout, int type_index) {
+     proc_instance_t * proc = (proc_instance_t*)vinstance;
+
+     tuple_member_create_uint64(input_data, proc->outcnt,
+                                proc->label_outcnt);
+     tuple_member_create_uint64(input_data, proc->outlen,
+                                proc->label_outlen);
+     ws_set_outdata(input_data, proc->outtype_tuple, dout);
      return 1;
 }
 
