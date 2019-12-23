@@ -532,6 +532,8 @@ static int proc_stats(void * vinstance, wsdata_t* input_data,
                                 proc->label_enqueued);
      tuple_member_create_uint64(input_data, proc->enqueue_fail,
                                 proc->label_enqueue_fail);
+     tuple_member_create_uint64(input_data, proc->retry_succeed,
+                                proc->label_retry_succeed);
      tuple_member_create_uint64(input_data, proc->outbytes,
                                 proc->label_outbytes);
      tuple_member_create_uint64(input_data, proc->delivery_success,
