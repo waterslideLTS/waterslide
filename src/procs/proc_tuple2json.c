@@ -397,6 +397,7 @@ static int print_json_tuple(proc_instance_t * proc, char * outbuf, int outlen,
                }
                offset += copy_check_fail(proc, outbuf, outlen, offset,
                                          "]", 1, fail);
+               i += listlen;
           }
           else {
                offset = print_json_member(proc, outbuf, outlen, offset, member, fail);
