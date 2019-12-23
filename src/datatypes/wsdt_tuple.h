@@ -766,8 +766,8 @@ static inline wsdt_binary_t * tuple_create_binary(wsdata_t * tdata,
 static inline wsdata_t * tuple_create_binary_wsdata(wsdata_t * tdata,
                                                     wslabel_t * label,
                                                     int len) {
-     char * buf;
-     int dlen;
+     char * buf = NULL;
+     int dlen = 0;
      wsdata_t * dep = wsdata_create_buffer(len, &buf, &dlen);
 
      if (dep) {
