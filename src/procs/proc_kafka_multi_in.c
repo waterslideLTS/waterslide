@@ -60,6 +60,12 @@ char *proc_alias[]     = { NULL };
 char proc_name[]       = PROC_NAME;
 char proc_purpose[]    = "multi topic kafka subscriber";
 char proc_nonswitch_opts[] = "kafka topic:partition to subscribe";
+proc_port_t proc_input_ports[] =  {
+     {"STAT","append running stats to tuple"},
+     {"STATS","append running stats to tuple"},
+     {"TRIGGER","append running stats to tuple"},
+     {NULL, NULL}
+};
 proc_option_t proc_opts[] = {
      /*  'option character', "long option string", "option argument",
 	 "option description", <allow multiple>, <required>*/
