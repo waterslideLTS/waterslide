@@ -63,6 +63,8 @@ proc_option_t proc_opts[] = {
      "number of keys to generate", 0, 0},
      {'s',"","seed",
      "seed for the RNG used",0,0},
+     {'u',"","usec",
+     "usec to sleep",0,0},
      //the following must be left as-is to signify the end of the array
      {' ',"","",
      "",0,0}
@@ -93,6 +95,7 @@ typedef struct _proc_instance_t {
      unsigned int seed;
      unsigned int fast_rand;
      unsigned int u64_rand;
+     int usleep_usec;
 } proc_instance_t;
 
 uint32_t POW31 = (uint32_t)(1<<31);
@@ -101,8 +104,11 @@ static int proc_cmd_options(int argc, char ** argv,
                              proc_instance_t * proc) {
      int op;
 
-     while ((op = getopt(argc, argv, "a:flm:c:s:")) != EOF) {
+     while ((op = getopt(argc, argv, "u:a:flm:c:s:")) != EOF) {
           switch (op) {
+          case 'u':
+               proc->usleep_usec = atoi(optarg);
+               break;
           case 'a':
                proc->add = (uint64_t)strtoull(optarg, NULL, 0);
                break;
@@ -200,6 +206,10 @@ static int proc_source(void * vinstance, wsdata_t* source_data,
      proc_instance_t * proc = (proc_instance_t*)vinstance;
      
      uint64_t key;
+
+     if (proc->usleep_usec) {
+          usleep(proc->usleep_usec);
+     }
 
      //figure out which cluster to reference
 

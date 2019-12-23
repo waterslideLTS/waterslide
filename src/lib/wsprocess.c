@@ -129,6 +129,7 @@ int ws_execute_graph(mimo_t * mimo) {
 
      // needed to know who really should check for valid source
      int rank_has_valid_source = 0; 
+     static int empty_src_cnt = 0;
 
      //see if mimo external source was added
      const int nrank = GETRANK();
@@ -249,7 +250,26 @@ int ws_execute_graph(mimo_t * mimo) {
           jcnt += WS_DO_EXTERNAL_JOBS(mimo, mimo->shared_jobq[nrank]);
 
           if (!jcnt) {
-               sched_yield();
+               if (empty_src_cnt < 100) {
+                    empty_src_cnt++;
+                    sched_yield();
+               }
+               else if (empty_src_cnt < 1000) {
+                    empty_src_cnt++;
+                    usleep(10);
+               }
+               else if (empty_src_cnt < 10000) {
+                    empty_src_cnt++;
+                    usleep(100);
+               }
+               else {
+                    usleep(5000);
+               }
+               
+          }
+          else {
+               //reset empty source counter
+               empty_src_cnt = 0;
           }
      }
 

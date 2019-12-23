@@ -59,6 +59,10 @@ proc_option_t proc_opts[] = {
      "item in tuple to be used as a key for kafka partitioning",0,0},
      {'X',"","option",
      "special kafka option for additional tuning and configuration",0,0},
+     {'w',"","seconds",
+     "set how many seconds to wait to flush kafka enqueue buffers during flush",0,0},
+     {'Z',"","",
+     "zero copy buffers",0,0},
      //the following must be left as-is to signify the end of the array
      {' ',"","",
      "",0,0}
@@ -84,11 +88,14 @@ typedef struct _proc_instance_t {
      char * brokers;
      char * topic;
 
+     int flush_wait_sec;
+
      uint64_t enqueued;
      uint64_t enqueue_fail;
      uint64_t outbytes;
      uint64_t delivery_fail;
      uint64_t delivery_success;
+     uint64_t retry_succeed;
 
      wslabel_t * label_enqueued;
      wslabel_t * label_enqueue_fail;
@@ -96,6 +103,7 @@ typedef struct _proc_instance_t {
      wslabel_t * label_fail;
      wslabel_t * label_outbytes;
      wslabel_t * label_qdepth;
+     wslabel_t * label_retry_succeed;
 
      rd_kafka_t *rk;
 	rd_kafka_conf_t *conf;
@@ -108,6 +116,8 @@ typedef struct _proc_instance_t {
 
      wsdata_t * wsd_topic;
      ws_outtype_t * outtype_tuple;
+
+     int zerocopy;
 } proc_instance_t;
 
 //handle options for command line config - like kafkacat or java clients do
@@ -145,8 +155,18 @@ static int proc_cmd_options(int argc, char ** argv,
 
      int op;
 
-     while ((op = getopt(argc, argv, "T:t:B:b:x:X:K:k:")) != EOF) {
+     while ((op = getopt(argc, argv, "Zzw:T:t:B:b:x:X:K:k:")) != EOF) {
           switch (op) {
+          case 'Z':
+          case 'z':
+               proc->zerocopy = 1;
+               break;
+          case 'W':
+          case 'w':
+               proc->flush_wait_sec = atoi(optarg);
+               tool_print("waiting up to %d seconds to flush kafka output queue",
+                          proc->flush_wait_sec);
+               break;
           case 'T':
           case 't':
                proc->topic = optarg;
@@ -213,6 +233,25 @@ static void dr_msg_cb (rd_kafka_t *rk,
                  rkmessage->len, rkmessage->partition);
 	}
 }
+
+static void dr_msg_cb_zerocopy (rd_kafka_t *rk,
+                       const rd_kafka_message_t *rkmessage, void *vproc) {
+     proc_instance_t * proc = (proc_instance_t*)vproc;
+	if (rkmessage->err) {
+          proc->delivery_fail++;
+		dprint("%% zq_Message delivery failed: %s",
+                 rd_kafka_err2str(rkmessage->err));
+	}
+	else {
+          proc->delivery_success++;
+		dprint("%% zq_Message delivered (%zd bytes, partition %"PRId32")",
+                 rkmessage->len, rkmessage->partition);
+	}
+     wsdata_t *ref = (wsdata_t *)rkmessage->_private;
+     if (ref) {
+          wsdata_delete(ref);
+     }
+}
                                         
 // the following is a function to take in command arguments and initalize
 // this processor's instance..
@@ -227,19 +266,22 @@ int proc_init(wskid_t * kid, int argc, char ** argv, void ** vinstance, ws_sourc
           (proc_instance_t*)calloc(1,sizeof(proc_instance_t));
      *vinstance = proc;
 
+
+     proc->flush_wait_sec = 10; //wait up to 10 seconds
+
      proc->label_enqueued = wsregister_label(type_table, "ENQUEUED");
      proc->label_enqueue_fail = wsregister_label(type_table, "ENQUEUE_FAIL");
      proc->label_success = wsregister_label(type_table, "SUCCESS");
      proc->label_fail = wsregister_label(type_table, "FAIL");
      proc->label_outbytes = wsregister_label(type_table, "OUTBYTES");
      proc->label_qdepth = wsregister_label(type_table, "QUEUEDEPTH");
+     proc->label_retry_succeed = wsregister_label(type_table, "RETRY_SUCCEED");
 
      //set up callbacks for output stats
      proc->conf = rd_kafka_conf_new();
      rd_kafka_conf_set_opaque(proc->conf, proc);
 	rd_kafka_conf_set_error_cb(proc->conf, err_cb);
 	rd_kafka_conf_set_throttle_cb(proc->conf, throttle_cb);
-     rd_kafka_conf_set_dr_msg_cb(proc->conf, dr_msg_cb);
 
 	/* Quick termination */
      char tmp[128];
@@ -255,6 +297,13 @@ int proc_init(wskid_t * kid, int argc, char ** argv, void ** vinstance, ws_sourc
      //read in command options
      if (!proc_cmd_options(argc, argv, proc, type_table)) {
           return 0;
+     }
+
+     if (proc->zerocopy) {
+          rd_kafka_conf_set_dr_msg_cb(proc->conf, dr_msg_cb_zerocopy);
+     }
+     else {
+          rd_kafka_conf_set_dr_msg_cb(proc->conf, dr_msg_cb);
      }
 
      if (!proc->nest_value.cnt) {
@@ -326,20 +375,31 @@ proc_process_t proc_input_set(void * vinstance, wsdatatype_t * input_type,
 
 //emit a buffer to a kafka topic
 static int write_kafka(proc_instance_t * proc, void * buf, size_t len,
-                       const void* key, size_t klen) {
+                       const void* key, size_t klen, wsdata_t * data,
+                       wsdata_t * kdata) {
+
+     int flags = RD_KAFKA_MSG_F_COPY;
+     if (proc->zerocopy) {
+          wsdata_add_reference(data);
+          if (kdata) {
+               wsdata_assign_dependency(kdata, data);
+          }
+          flags = 0;
+
+     }
+     int rtn = 1;
 	if (rd_kafka_produce(proc->rkt,
 					 RD_KAFKA_PARTITION_UA,  //use builtin key'd partitioner
                             /* Make a copy of the payload. */
-					 RD_KAFKA_MSG_F_COPY,
+					 flags,
 					 /* Message payload (value) and length */
 					 buf, len,
 					 key, klen,
-					 proc) == -1) {
+					 data) == -1) {
 		
           //handle failure to produce
           proc->enqueue_fail++;
-          fprintf(stderr,
-			   "%% Failed to produce to topic %s: %s\n",
+          dprint("%% Failed to produce to topic %s: %s\n",
 			   rd_kafka_topic_name(proc->rkt),
 			   rd_kafka_err2str(rd_kafka_last_error()));
 
@@ -349,6 +409,10 @@ static int write_kafka(proc_instance_t * proc, void * buf, size_t len,
                //try to see if queue can be flushed - wait a sec
 			rd_kafka_poll(proc->rk, 1000);
 		}
+          if (proc->zerocopy) {
+               wsdata_delete(data); //delete reference
+          }
+          rtn = 0;
 	}
      else {
           proc->enqueued++;
@@ -361,7 +425,7 @@ static int write_kafka(proc_instance_t * proc, void * buf, size_t len,
      //service kafka producer
      rd_kafka_poll(proc->rk, 0/*non-blocking*/);
 
-     return 1;
+     return rtn;
 }
 
 //only select first key found as key to use
@@ -396,7 +460,11 @@ static int proc_nest_value_callback(void * vproc, void * vkdata,
      int vlen = 0;
      if (dtype_string_buffer(member, &vbuf, &vlen) && 
          (vlen != 0) && (vbuf != NULL)) {
-          write_kafka(proc, vbuf, vlen, kbuf, klen);          
+          if (!write_kafka(proc, vbuf, vlen, kbuf, klen, member, key)) {
+               if (write_kafka(proc, vbuf, vlen, kbuf, klen, member, key)) {
+                    proc->retry_succeed++;
+               }
+          }
           return 1;
      } 
      return 0;
@@ -441,14 +509,16 @@ static int proc_flush(void * vinstance, wsdata_t* source_data,
      fprintf(stderr,
              "%% Flushing Kafka final %d messages..\n",
              rd_kafka_outq_len(proc->rk));
-     rd_kafka_flush(proc->rk, 5*1000 /* wait for max 6 seconds */);
+     rd_kafka_flush(proc->rk, proc->flush_wait_sec * 1000 /* wait for max t seconds */);
      tool_print("finished flushing kafka producer");
 
      /* If the output queue is still not empty there is an issue
       * with producing messages to the clusters. */
-     if (rd_kafka_outq_len(proc->rk) > 0) {
-          fprintf(stderr, "%% %d message(s) were not delivered\n",
-                  rd_kafka_outq_len(proc->rk));
+     int leftover = rd_kafka_outq_len(proc->rk);
+     if (leftover > 0) {
+          fprintf(stderr, "%% %d message(s) were probably not delivered\n",
+                  leftover);
+          proc->delivery_fail += leftover;
      }
      return 1;
 }
@@ -479,12 +549,13 @@ static int proc_stats(void * vinstance, wsdata_t* input_data,
 //return 0 if no..
 int proc_destroy(void * vinstance) {
      proc_instance_t * proc = (proc_instance_t*)vinstance;
-     tool_print("meta_proc cnt   %" PRIu64, proc->meta_process_cnt);
-     tool_print("produce outbytes %" PRIu64, proc->outbytes);
-     tool_print("produce enqueued %" PRIu64, proc->enqueued);
-     tool_print("produce success  %" PRIu64, proc->delivery_success);
-     tool_print("produce fail     %" PRIu64, proc->delivery_fail);
-     tool_print("enqueue fail     %" PRIu64, proc->enqueue_fail);
+     tool_print("meta_proc cnt         %" PRIu64, proc->meta_process_cnt);
+     tool_print("produce outbytes      %" PRIu64, proc->outbytes);
+     tool_print("produce enqueued      %" PRIu64, proc->enqueued);
+     tool_print("enqueue fail          %" PRIu64, proc->enqueue_fail);
+     tool_print("enqueue retry success %" PRIu64, proc->retry_succeed);
+     tool_print("produce success       %" PRIu64, proc->delivery_success);
+     tool_print("produce fail          %" PRIu64, proc->delivery_fail);
 
      if (proc->rk) {
           rd_kafka_destroy(proc->rk);
