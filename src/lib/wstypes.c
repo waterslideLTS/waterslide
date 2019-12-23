@@ -39,6 +39,7 @@ wsdatatype_t * dtype_fixedstring;
 wsdatatype_t * dtype_mediumstring;
 wsdatatype_t * dtype_bigstring;
 wsdatatype_t * dtype_bigstr;
+wsdatatype_t * dtype_largestring;
 wsdatatype_t * dtype_ts;
 wsdatatype_t * dtype_tuple;
 wsdatatype_t * dtype_monitor;
@@ -70,6 +71,7 @@ void init_wstypes(void * tl) {
      dtype_mediumstring = wsdatatype_get(tl, "MEDIUMSTRING_TYPE");
      dtype_bigstring = wsdatatype_get(tl, "BIGSTRING_TYPE");
      dtype_bigstr = wsdatatype_get(tl, "BIGSTRING_TYPE");
+     dtype_largestring = wsdatatype_get(tl, "LARGESTRING_TYPE");
      dtype_binary = wsdatatype_get(tl, "BINARY_TYPE");
      dtype_ts = wsdatatype_get(tl, "TS_TYPE");
      dtype_tuple = wsdatatype_get(tl, "TUPLE_TYPE");

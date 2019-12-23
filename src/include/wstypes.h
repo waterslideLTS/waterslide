@@ -32,6 +32,7 @@ SOFTWARE.
 #include "datatypes/wsdt_fixedstring.h"
 #include "datatypes/wsdt_massivestring.h"
 #include "datatypes/wsdt_hugeblock.h"
+#include "datatypes/wsdt_largestring.h"
 #include "datatypes/wsdt_bigstring.h"
 #include "datatypes/wsdt_mediumstring.h"
 #include "datatypes/wsdt_smallstring.h"
@@ -75,6 +76,7 @@ EXT wsdatatype_t * dtype_fstr;
 EXT wsdatatype_t * dtype_fixedstring;
 EXT wsdatatype_t * dtype_bigstr;
 EXT wsdatatype_t * dtype_bigstring;
+EXT wsdatatype_t * dtype_largestring;
 EXT wsdatatype_t * dtype_mediumstring;
 EXT wsdatatype_t * dtype_massivestring;
 EXT wsdatatype_t * dtype_hugeblock;
@@ -170,6 +172,14 @@ static inline wsdata_t * wsdata_create_buffer(int len, char ** pbuf,
                wsdt_bigstring_t * bstr = (wsdt_bigstring_t*)dep->data;
                *plen = len;
                *pbuf = bstr->buf;
+          }
+     }
+     else if (len <= WSDT_LARGESTRING_LEN) {
+          dep = wsdata_alloc(dtype_largestring);
+          if (dep) {
+               wsdt_largestring_t * lrgstr = (wsdt_largestring_t*)dep->data;
+               *plen = len;
+               *pbuf = lrgstr->buf;
           }
      }
      else if (len <= WSDT_MASSIVESTRING_LEN) {

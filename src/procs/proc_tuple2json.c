@@ -69,6 +69,8 @@ typedef struct _proc_instance_t {
      uint64_t meta_process_cnt;
      uint64_t out;
      uint64_t toolong;
+     uint64_t writefail;
+     uint64_t resize;
 
      int print_only_first_label;
      int print_only_last_label;
@@ -147,56 +149,81 @@ proc_process_t proc_input_set(void * vinstance, wsdatatype_t * input_type,
      return NULL;
 }
 
+//return number of bytes copied
+//fall through fail 
+static int copy_check_fail(proc_instance_t * proc, char * outbuf, int outlen, 
+                           int offset, const char * inbuf, int inlen, int * fail) {
+     dprint("ccf %d %d", offset, *fail);
+     if (!fail || *fail) {
+          return 0;
+     }
+     if ((offset + inlen) > outlen) {
+          *fail = 1;
+          return 0;
+     }
+     memcpy(outbuf + offset, inbuf, inlen);
+
+     return inlen;
+}
+
 //return current offset if success
 //return 0 on fail -- overwite of buffer
 static int print_json_label(proc_instance_t * proc,
                             char * outbuf, int outlen, int offset,
-                            wsdata_t * member) {
-     if (outlen <= offset) {
+                            wsdata_t * member, int * fail) {
+     dprint("print_json_label %d %d", offset, *fail);
+     char * name = NULL;
+     if (!fail || *fail) {
           return 0;
      }
-     int oldoffset = offset;
      if (!member->label_len) {
-          offset += snprintf(outbuf + offset, outlen - offset, "\"NULL\":");
+          offset += copy_check_fail(proc, outbuf, outlen, offset,
+                                    "\"NULL\":", 7, fail);
      }
-     else if (proc->print_only_last_label) {
-          offset += snprintf(outbuf + offset, outlen - offset,
-                             "\"%s\":", member->labels[member->label_len-1]->name);
-     }
-     else if (proc->print_only_first_label) {
-          offset += snprintf(outbuf + offset, outlen - offset,
-                             "\"%s\":", member->labels[0]->name);
+     else if (proc->print_only_last_label || proc->print_only_first_label) {
+          if (proc->print_only_last_label) {
+               name = member->labels[member->label_len-1]->name;
+          }
+          else {
+               name = member->labels[0]->name;
+          }
+          offset += copy_check_fail(proc, outbuf, outlen, offset,
+                                    "\"", 1, fail);
+          offset += copy_check_fail(proc, outbuf, outlen, offset,
+                                    name, strlen(name), fail);
+          offset += copy_check_fail(proc, outbuf, outlen, offset,
+                                    "\":", 2, fail);
      }
      else {
-          offset += snprintf(outbuf + offset, outlen - offset,"\"");
+          offset += copy_check_fail(proc, outbuf, outlen, offset,
+                                    "\"", 1, fail);
           int i;
           for (i = 0; i < member->label_len; i++) {
-               offset += snprintf(outbuf + offset, outlen - offset,
-                                  "%s%s", (i>0) ? ":":"",
-                                  member->labels[i]->name);
+               name = member->labels[i]->name;
+               offset += copy_check_fail(proc, outbuf, outlen, offset,
+                                         name, strlen(name), fail);
+               if (i>0) {
+                    offset += copy_check_fail(proc, outbuf, outlen, offset,
+                                              ":", 1, fail);
+               }
           }
-          offset += snprintf(outbuf + offset, outlen - offset,"\":");
+          offset += copy_check_fail(proc, outbuf, outlen, offset,
+                                    "\":", 2, fail);
      }
-     if ((offset > oldoffset) && (offset < outlen)) {
-          return offset;
-     }
-     else {
-          return 0;
-     }
+     return offset;
 }
 
 //return current offset if success
 //return 0 on fail -- overwite of buffer
 static int print_json_string(proc_instance_t * proc, char * outbuf, int outlen,
-                              int offset, char * str, int slen) {
-     if (outlen <= (offset + 3)) {
+                              int offset, char * str, int slen, int *fail) {
+     dprint("print_json_string %d %d", offset, *fail);
+
+     if (!fail || *fail) {
           return 0;
      }
-     outbuf[offset] = '\"';
-     offset++;
-
-     int oldoffset = offset;
-
+     offset += copy_check_fail(proc, outbuf, outlen, offset,
+                               "\"", 1, fail);
      int prior = 0;
      int i;
      char * jstr;
@@ -230,57 +257,59 @@ static int print_json_string(proc_instance_t * proc, char * outbuf, int outlen,
           }
           if (jstr) {
                if (prior < i) {
-                    offset += snprintf(outbuf + offset, outlen - offset , "%.*s", i - prior, str + prior);
+                    offset += copy_check_fail(proc, outbuf, outlen, offset,
+                                              str + prior, i - prior, fail);
                }
-               offset += snprintf(outbuf + offset, outlen - offset, "%s", jstr);
-               prior = i + 1;
+               offset += copy_check_fail(proc, outbuf, outlen, offset,
+                                         jstr, 2, fail);
           }
      }
      if (prior < slen) {
-          offset += snprintf(outbuf + offset, outlen - offset, "%.*s", slen - prior, str + prior);
+          offset += copy_check_fail(proc, outbuf, outlen, offset,
+                                    str + prior, slen - prior, fail);
      }
-     offset += snprintf(outbuf + offset, outlen - offset, "\"");
+     offset += copy_check_fail(proc, outbuf, outlen, offset,
+                               "\"", 1, fail);
 
-     if ((offset > oldoffset) && (offset < outlen)) {
-          return offset;
-     }
-     else {
-          return 0;
-     }
+     return offset;
 }
 
 
 static int print_json_tuple(proc_instance_t * proc, char * outbuf, int outlen,
-                             int offset, wsdata_t * tdata);
+                             int offset, wsdata_t * tdata, int * fail);
 
 static int print_json_member(proc_instance_t * proc, char * outbuf, int outlen,
-                              int offset, wsdata_t * member) {
-     if (outlen <= (offset+2)) {
+                              int offset, wsdata_t * member, int * fail) {
+     dprint("print_json_member %d %d", offset, *fail);
+     if (!fail || *fail) {
           return 0;
      }
 
      if (member->dtype == dtype_tuple) {
-          outbuf[offset] = '{';
-          offset++;
-          offset = print_json_tuple(proc, outbuf, outlen, offset, member);
-          if ((!offset) || (offset>=outlen)) {
-               return 0;
-          }
-          outbuf[offset] = '}';
-          offset++;
+          offset += copy_check_fail(proc, outbuf, outlen, offset,
+                               "{", 1, fail);
+          offset = print_json_tuple(proc, outbuf, outlen, offset, member, fail);
+          offset += copy_check_fail(proc, outbuf, outlen, offset,
+                               "}", 1, fail);
           return offset;
      }
      else if (member->dtype == dtype_binary) {
           wsdt_binary_t * bin = (wsdt_binary_t*)member->data;
           int total = offset + 2 + (2* bin->len);
           if (total >= outlen) {
+               *fail = 1;
                return 0;
           }
           outbuf[offset] = '\"';
           offset++;
           int b;
           for (b = 0; b < bin->len; b++) {
-               offset += snprintf(outbuf + offset, outlen - offset, "%02x", (uint8_t)bin->buf[b]);
+               if (snprintf(outbuf + offset, outlen - offset, "%02x",
+                            (uint8_t)bin->buf[b]) != 2) {
+                    *fail = 1;
+                    return 0;
+               }
+               offset +=2;
           }
           outbuf[offset] = '\"';
           offset++;
@@ -290,28 +319,29 @@ static int print_json_member(proc_instance_t * proc, char * outbuf, int outlen,
           char * buf = NULL;
           int len = 0;
           if (!dtype_string_buffer(member, &buf, &len) || (len == 0)) {
-               if ((offset+2) >= outlen) {
-                    return 0;
-               }
-               //return empty string for unknown type
-               outbuf[offset] = '\"';
-               outbuf[offset+1] = '\"';
-               offset +=2;
+
+               offset += copy_check_fail(proc, outbuf, outlen, offset,
+                               "\"\"", 2, fail);
                return offset;
           }
 
-          return print_json_string(proc, outbuf, outlen, offset, buf, len);
+          return print_json_string(proc, outbuf, outlen, offset, buf, len, fail);
      }
 }
 
 //return offset if successful
 //return 0 if fail
 static int print_json_tuple(proc_instance_t * proc, char * outbuf, int outlen,
-                             int offset, wsdata_t * tdata) {
+                             int offset, wsdata_t * tdata, int *fail) {
+     dprint("print_json_tuple %d %d", offset, *fail);
      wsdt_tuple_t * tuple = (wsdt_tuple_t*)tdata->data;
      wsdata_t * member;
      int i;
      int out = 0;
+
+     if (!fail || *fail) {
+          return 0;
+     }
 
      for (i = 0; i < tuple->len; i++) {
           member = tuple->member[i];
@@ -319,19 +349,12 @@ static int print_json_tuple(proc_instance_t * proc, char * outbuf, int outlen,
                continue;
           }
 
-          if (outlen <= offset) {
-               return 0;
-          }
-
           if (out) {
-               outbuf[offset] = ',';
-               offset++;
+               offset += copy_check_fail(proc, outbuf, outlen, offset,
+                                         ",", 1, fail);
           }
 
-          offset = print_json_label(proc, outbuf, outlen, offset, member);
-          if (!offset) {
-               return 0;
-          }
+          offset = print_json_label(proc, outbuf, outlen, offset, member, fail);
 
           //check if list
           int listlen = 0;
@@ -359,39 +382,23 @@ static int print_json_tuple(proc_instance_t * proc, char * outbuf, int outlen,
           }
           
           if (listlen) {
-
-               if (outlen <= (offset + 3)) {
-                    return 0;
-               }
-               outbuf[offset] = '[';
-               offset++;
+               offset += copy_check_fail(proc, outbuf, outlen, offset,
+                                         "[", 1, fail);
                
                for (j = 0; j <= listlen; j++) {
-                    if (outlen <= (offset + 2)) {
-                         return 0;
-                    }
                     member = tuple->member[i+j];
                     if (j > 0) {
-                         outbuf[offset] = ',';
-                         offset++;
+                         offset += copy_check_fail(proc, outbuf, outlen, offset,
+                                                   ",", 1, fail);
                     }
-                    offset = print_json_member(proc, outbuf, outlen, offset, member);
-                    if (!offset) {
-                         return 0;
-                    }
+                    offset = print_json_member(proc, outbuf, outlen, offset,
+                                               member, fail);
                }
-               if (outlen <= (offset + 1)) {
-                    return 0;
-               }
-               outbuf[offset] = ']';
-               offset++;
-               i += listlen;
+               offset += copy_check_fail(proc, outbuf, outlen, offset,
+                                         "]", 1, fail);
           }
           else {
-               offset = print_json_member(proc, outbuf, outlen, offset, member);
-               if (!offset) {
-                    return 0;
-               }
+               offset = print_json_member(proc, outbuf, outlen, offset, member, fail);
           }
           out++;
      }
@@ -403,38 +410,37 @@ static int print_json_tuple(proc_instance_t * proc, char * outbuf, int outlen,
 //return offset length
 //return 0 on fail -- overwite of buffer
 static int write_json(proc_instance_t * proc,
-                             char * outbuf, int outlen,
-                             wsdata_t * tuple) {
-     if (outlen < 3) {
-         return 0; 
-     }
+                      char * outbuf, int outlen,
+                      wsdata_t * tuple) {
+     dprint("write_json");
+     int fail = 0;
      int offset = 0;
 
      if (tuple->label_len) {
-          outbuf[offset] = '{';
-          offset++;
-          offset = print_json_label(proc, outbuf, outlen, offset, tuple);
-          if (!offset || ((offset+5) >= outlen)) {
-               return 0;
-          }
-          outbuf[offset] = '{';
-          offset++;
-          offset = print_json_tuple(proc, outbuf, outlen, offset, tuple);
-          if (!offset || ((offset+4) >= outlen)) {
-               return 0;
-          }
-          offset += snprintf(outbuf + offset, outlen - offset, "}}");
+          offset += copy_check_fail(proc, outbuf, outlen, offset,
+                                    "{", 1, &fail);
+          offset = print_json_label(proc, outbuf, outlen, offset, tuple, &fail);
+          offset += copy_check_fail(proc, outbuf, outlen, offset,
+                                    "{", 1, &fail);
+          offset = print_json_tuple(proc, outbuf, outlen, offset, tuple, &fail);
+          offset += copy_check_fail(proc, outbuf, outlen, offset,
+                                    "}}", 2, &fail);
      }
      else {
-          outbuf[offset] = '{';
-          offset++;
-          offset = print_json_tuple(proc, outbuf, outlen, offset, tuple);
-          if (!offset || ((offset+3) >= outlen)) {
-               return 0;
-          }
-          offset += snprintf(outbuf + offset, outlen - offset, "}");
+          offset += copy_check_fail(proc, outbuf, outlen, offset,
+                                    "{", 1, &fail);
+          offset = print_json_tuple(proc, outbuf, outlen, offset, tuple, &fail);
+          offset += copy_check_fail(proc, outbuf, outlen, offset,
+                                    "}", 1, &fail);
      }
-     return offset;
+     dprint("write_json - finish %d %d", offset, fail);
+     if (fail) {
+          proc->writefail++;
+          return 0;
+     }
+     else {
+          return offset;
+     }
 }
 
 
@@ -570,7 +576,7 @@ static int est_json_tuple(proc_instance_t * proc, wsdata_t * tdata) {
 
 //used to estimate buffer size of resulting json
 static int estimate_json_buffer(proc_instance_t * proc, wsdata_t * tuple) {
-     int est = 128;
+     int est = 0;
 
      if (tuple->label_len) {
           est += 4;
@@ -596,6 +602,7 @@ static int proc_tuple(void * vinstance, wsdata_t* input_data,
      int outlen;
      //start by allocating a reasonable size
      wsdata_t * wsb = wsdata_create_buffer(16376, &outbuf, &outlen);
+     //wsdata_t * wsb = wsdata_create_buffer(35, &outbuf, &outlen);
      if (!wsb) {
           return 0;
      }
@@ -612,7 +619,8 @@ static int proc_tuple(void * vinstance, wsdata_t* input_data,
           dprint("estimate resize %d", resize);
 
           if (resize) {
-               wsb = wsdata_create_buffer(resize, &outbuf, &outlen);
+               proc->resize++;
+               wsb = wsdata_create_buffer(resize+1024, &outbuf, &outlen);
                wsdata_add_reference(wsb);
                jlen = write_json(proc, outbuf, outlen, input_data);
                if (!jlen) {
@@ -636,7 +644,7 @@ static int proc_tuple(void * vinstance, wsdata_t* input_data,
      wsdt_string_t * str = (wsdt_string_t *) wsstr->data;
      str->buf = outbuf;
      str->len = jlen;
-    
+
      //add buffer to tuple 
      add_tuple_member(input_data, wsstr);
 
@@ -653,6 +661,10 @@ int proc_destroy(void * vinstance) {
      proc_instance_t * proc = (proc_instance_t*)vinstance;
      tool_print("meta_proc cnt   %" PRIu64, proc->meta_process_cnt);
      tool_print("tuples out %" PRIu64, proc->out);
+     if (proc->writefail) {
+          tool_print("write fails %" PRIu64, proc->writefail);
+          tool_print("resizes     %" PRIu64, proc->resize);
+     }
      if (proc->toolong) {
           tool_print("tuples too big for serialization %" PRIu64, proc->toolong);
      }
