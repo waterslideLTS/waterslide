@@ -61,6 +61,10 @@ proc_option_t proc_opts[] = {
      "special kafka option for additional tuning and configuration",0,0},
      {'w',"","seconds",
      "set how many seconds to wait to flush kafka enqueue buffers during flush",0,0},
+     {'r',"","msec",
+     "set how many milli-seconds to wait when publishing fails",0,0},
+     {'R',"","count",
+     "set how many times a retry should wait before publishing fails",0,0},
      {'Z',"","",
      "zero copy buffers",0,0},
      //the following must be left as-is to signify the end of the array
@@ -96,6 +100,13 @@ typedef struct _proc_instance_t {
      uint64_t delivery_fail;
      uint64_t delivery_success;
      uint64_t retry_succeed;
+     uint64_t fail_loops;
+     uint64_t queue_full_waits;
+     uint64_t flush_fail;
+
+     int retry_msec;
+     int retry_cnt;
+
 
      wslabel_t * label_enqueued;
      wslabel_t * label_enqueue_fail;
@@ -104,6 +115,8 @@ typedef struct _proc_instance_t {
      wslabel_t * label_outbytes;
      wslabel_t * label_qdepth;
      wslabel_t * label_retry_succeed;
+     wslabel_t * label_fail_loops;
+     wslabel_t * label_queue_full_waits;
 
      rd_kafka_t *rk;
 	rd_kafka_conf_t *conf;
@@ -155,8 +168,14 @@ static int proc_cmd_options(int argc, char ** argv,
 
      int op;
 
-     while ((op = getopt(argc, argv, "Zzw:T:t:B:b:x:X:K:k:")) != EOF) {
+     while ((op = getopt(argc, argv, "r:R:Zzw:T:t:B:b:x:X:K:k:")) != EOF) {
           switch (op) {
+          case 'R':
+               proc->retry_cnt = atoi(optarg);
+               break;
+          case 'r':
+               proc->retry_msec = atoi(optarg);
+               break;
           case 'Z':
           case 'z':
                proc->zerocopy = 1;
@@ -267,6 +286,8 @@ int proc_init(wskid_t * kid, int argc, char ** argv, void ** vinstance, ws_sourc
      *vinstance = proc;
 
 
+     proc->retry_cnt = 1;
+     proc->retry_msec = 1000;
      proc->flush_wait_sec = 10; //wait up to 10 seconds
 
      proc->label_enqueued = wsregister_label(type_table, "ENQUEUED");
@@ -276,6 +297,8 @@ int proc_init(wskid_t * kid, int argc, char ** argv, void ** vinstance, ws_sourc
      proc->label_outbytes = wsregister_label(type_table, "OUTBYTES");
      proc->label_qdepth = wsregister_label(type_table, "QUEUEDEPTH");
      proc->label_retry_succeed = wsregister_label(type_table, "RETRY_SUCCEED");
+     proc->label_fail_loops = wsregister_label(type_table, "FAIL_LOOPS");
+     proc->label_queue_full_waits = wsregister_label(type_table, "QUEUE_FULL_WAITS");
 
      //set up callbacks for output stats
      proc->conf = rd_kafka_conf_new();
@@ -387,45 +410,64 @@ static int write_kafka(proc_instance_t * proc, void * buf, size_t len,
           flags = 0;
 
      }
-     int rtn = 1;
-	if (rd_kafka_produce(proc->rkt,
-					 RD_KAFKA_PARTITION_UA,  //use builtin key'd partitioner
-                            /* Make a copy of the payload. */
-					 flags,
-					 /* Message payload (value) and length */
-					 buf, len,
-					 key, klen,
-					 data) == -1) {
+
+     int retry = 0;
+     while (retry <= proc->retry_cnt) {
+          if (rd_kafka_produce(proc->rkt,
+                               RD_KAFKA_PARTITION_UA,  //use builtin key'd partitioner
+                               /* Make a copy of the payload. */
+                               flags,
+                               /* Message payload (value) and length */
+                               buf, len,
+                               key, klen,
+                               data) == -1) {
 		
-          //handle failure to produce
-          proc->enqueue_fail++;
-          dprint("%% Failed to produce to topic %s: %s\n",
-			   rd_kafka_topic_name(proc->rkt),
-			   rd_kafka_err2str(rd_kafka_last_error()));
+               //handle failure to produce
+               dprint("%% Failed to produce to topic %s: %s\n",
+                      rd_kafka_topic_name(proc->rkt),
+                      rd_kafka_err2str(rd_kafka_last_error()));
 
-		/* Poll to handle delivery reports */
-		if (rd_kafka_last_error() ==
-		    RD_KAFKA_RESP_ERR__QUEUE_FULL) {
-               //try to see if queue can be flushed - wait a sec
-			rd_kafka_poll(proc->rk, 1000);
-		}
-          if (proc->zerocopy) {
-               wsdata_delete(data); //delete reference
+               dprint("fail to produce - loop %d", retry + 1);
+               proc->fail_loops++;
+               /* Poll to handle delivery reports */
+               if (rd_kafka_last_error() ==
+                   RD_KAFKA_RESP_ERR__QUEUE_FULL) {
+                    //try to see if queue can be flushed - wait a sec
+                    dprint("queue full error");
+                    proc->queue_full_waits++;
+                    rd_kafka_poll(proc->rk, proc->retry_msec); //blocking
+               }
+               else {
+                    dprint("other production error");
+                    rd_kafka_poll(proc->rk, 0); //blocking
+                    usleep(1000 * proc->retry_msec);
+               }
+               retry++;
           }
-          rtn = 0;
-	}
-     else {
-          proc->enqueued++;
-          proc->outbytes += len;
-		dprint( "%% Enqueued message (%zd bytes) "
-                  "for topic %s",
-                  len, rd_kafka_topic_name(proc->rkt));
-	}
+          else {
+               if (retry) {
+                    dprint("retry success after %d loops", retry);
+                    proc->retry_succeed++;
+               }
+               proc->enqueued++;
+               proc->outbytes += len;
+               dprint( "%% Enqueued message (%zd bytes) "
+                       "for topic %s",
+                       len, rd_kafka_topic_name(proc->rkt));
+               rd_kafka_poll(proc->rk, 0/*non-blocking*/);
+               return 1;
+          }
+     }
 
-     //service kafka producer
-     rd_kafka_poll(proc->rk, 0/*non-blocking*/);
+     //if reached here - retry has failed
+     proc->enqueue_fail++;
+     proc->delivery_fail++;
 
-     return rtn;
+     if (proc->zerocopy) {
+          wsdata_delete(data); //delete reference
+     }
+
+     return 0;
 }
 
 //only select first key found as key to use
@@ -460,14 +502,12 @@ static int proc_nest_value_callback(void * vproc, void * vkdata,
      int vlen = 0;
      if (dtype_string_buffer(member, &vbuf, &vlen) && 
          (vlen != 0) && (vbuf != NULL)) {
-          if (!write_kafka(proc, vbuf, vlen, kbuf, klen, member, key)) {
-               if (write_kafka(proc, vbuf, vlen, kbuf, klen, member, key)) {
-                    proc->retry_succeed++;
-               }
-          }
+          write_kafka(proc, vbuf, vlen, kbuf, klen, member, key);
           return 1;
-     } 
-     return 0;
+     }
+     else { 
+          return 0;
+     }
 }
 
 
@@ -519,6 +559,7 @@ static int proc_flush(void * vinstance, wsdata_t* source_data,
           fprintf(stderr, "%% %d message(s) were probably not delivered\n",
                   leftover);
           proc->delivery_fail += leftover;
+          proc->flush_fail += leftover;
      }
      return 1;
 }
@@ -542,6 +583,10 @@ static int proc_stats(void * vinstance, wsdata_t* input_data,
                                 proc->label_fail);
      tuple_member_create_uint64(input_data, rd_kafka_outq_len(proc->rk),
                                 proc->label_qdepth);
+     tuple_member_create_uint64(input_data, proc->fail_loops,
+                                proc->label_fail_loops);
+     tuple_member_create_uint64(input_data, proc->queue_full_waits,
+                                proc->label_queue_full_waits);
 
      ws_set_outdata(input_data, proc->outtype_tuple, dout);
      return 1;
@@ -554,10 +599,15 @@ int proc_destroy(void * vinstance) {
      tool_print("meta_proc cnt         %" PRIu64, proc->meta_process_cnt);
      tool_print("produce outbytes      %" PRIu64, proc->outbytes);
      tool_print("produce enqueued      %" PRIu64, proc->enqueued);
-     tool_print("enqueue fail          %" PRIu64, proc->enqueue_fail);
-     tool_print("enqueue retry success %" PRIu64, proc->retry_succeed);
      tool_print("produce success       %" PRIu64, proc->delivery_success);
-     tool_print("produce fail          %" PRIu64, proc->delivery_fail);
+     tool_print("--- errors ----");
+     tool_print("produce event fails   %" PRIu64, proc->delivery_fail);
+     tool_print(" enqueue fail         %" PRIu64, proc->enqueue_fail);
+     tool_print(" fail on exit flush   %" PRIu64, proc->flush_fail);
+     tool_print("--- retry stats ----");
+     tool_print("enqueue retry success %" PRIu64, proc->retry_succeed);
+     tool_print("fail loops            %" PRIu64, proc->fail_loops);
+     tool_print("queue full waits      %" PRIu64, proc->queue_full_waits);
 
      if (proc->rk) {
           rd_kafka_destroy(proc->rk);
