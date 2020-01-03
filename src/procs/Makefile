@@ -53,6 +53,29 @@ proc_filemagic$(WS_SFX): proc_filemagic.c
 
 endif
 
+
+ifdef HASCRYPTO
+proc_hmac$(WS_SFX): proc_hmac.c
+	$(SHOWFILE) 
+	$(CC) $(CFLAGS) $< -o $@ $(LDFLAGS) -lcrypto
+	$(INSTALL) $@ $(WS_PROCS_DIR)
+else
+proc_hmac$(WS_SFX): proc_hmac.c
+	@echo " not building $@, set HASCRYPTO=1 to build"
+endif
+
+
+ifdef HASPCAP
+proc_pcapin$(WS_SFX): proc_pcapin.c
+	$(SHOWFILE) 
+	$(CC) $(CFLAGS) $< -o $@ $(LDFLAGS) -lpcap 
+	$(INSTALL) $@ $(WS_PROCS_DIR)
+else
+proc_pcapin$(WS_SFX): proc_pcapin.c
+	@echo " not building $@, set HASPCAP=1 to build"
+endif
+
+
 ifndef NOPB
   ifdef PBNONLOCAL
     PBFLAGS += -rdynamic -Wl,-rpath,`pkg-config protobuf --variable=libdir`

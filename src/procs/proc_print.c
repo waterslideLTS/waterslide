@@ -737,7 +737,7 @@ static void print_json_member(proc_instance_t * proc, wsdata_t * member) {
           wsdt_binary_t * bin = (wsdt_binary_t*)member->data;
           int b;
           for (b = 0; b < bin->len; b++) {
-               fprintf(proc->outfp, "%02u", (uint8_t)bin->buf[b]);
+               fprintf(proc->outfp, "%02x", (uint8_t)bin->buf[b]);
           }
           fprintf(proc->outfp, "\"");
      }
