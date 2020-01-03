@@ -54,6 +54,17 @@ proc_filemagic$(WS_SFX): proc_filemagic.c
 endif
 
 
+ifdef HASCRYPTO
+proc_hmac$(WS_SFX): proc_hmac.c
+	$(SHOWFILE) 
+	$(CC) $(CFLAGS) $< -o $@ $(LDFLAGS) -lcrypto
+	$(INSTALL) $@ $(WS_PROCS_DIR)
+else
+proc_hmac$(WS_SFX): proc_hmac.c
+	@echo " not building $@, set HASCRYPTO=1 to build"
+endif
+
+
 ifdef HASPCAP
 proc_pcapin$(WS_SFX): proc_pcapin.c
 	$(SHOWFILE) 
