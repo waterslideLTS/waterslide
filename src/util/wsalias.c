@@ -79,7 +79,7 @@ char * get_module_path(const char *name, const char * libpath) {
           free(fullname); // a serial kid with this name does not exist, try parallel kid...
 
           int suffix = strlen(WS_PROC_MOD_PARALLEL_SUFFIX);
-          char * fullname = (char *)calloc(1,dlen+prefix+modlen+suffix+1);
+          fullname = (char *)calloc(1,dlen+prefix+modlen+suffix+1);
           if (!fullname) {
                error_print("failed get_module_path calloc of fullname");
                return NULL;

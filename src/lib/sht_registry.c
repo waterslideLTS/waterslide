@@ -234,7 +234,7 @@ int enroll_shared_in_sht_registry(void * sht, const char * sh_type, const char *
 
      uint32_t cpsz = strlen(sh_type);
 
-     if (cpsz <= MAX_CHARS_TYPE) {
+     if (cpsz < MAX_CHARS_TYPE) {
           strcpy(sh_registry[n_sh_register].sh_type, sh_type);
      } else {
           strncpy(sh_registry[n_sh_register].sh_type, sh_type, MAX_CHARS_TYPE);
@@ -249,14 +249,14 @@ int enroll_shared_in_sht_registry(void * sht, const char * sh_type, const char *
      if (!cpsz) {
           strcpy(sh_registry[n_sh_register].sh_kidname, strdup("kid name not assigned"));
      }
-     else if (cpsz <= MAX_CHARS_NAME) {
+     else if (cpsz < MAX_CHARS_NAME) {
           strcpy(sh_registry[n_sh_register].sh_kidname, global_kid_name[nrank]);
      } else {
           strncpy(sh_registry[n_sh_register].sh_kidname, global_kid_name[nrank], MAX_CHARS_NAME);
      }
 
      cpsz = strlen(sh_label);
-     if (cpsz <= MAX_CHARS_LABEL) {
+     if (cpsz < MAX_CHARS_LABEL) {
           strcpy(sh_registry[n_sh_register].sh_label, sh_label);
      } else {
           strncpy(sh_registry[n_sh_register].sh_label, sh_label, MAX_CHARS_LABEL);
@@ -310,7 +310,7 @@ int enroll_in_sht_registry(void * sht, const char * sh_type, const uint64_t size
 
      uint32_t cpsz = strlen(sh_type);
 
-     if (cpsz <= MAX_CHARS_TYPE) {
+     if (cpsz < MAX_CHARS_TYPE) {
           strcpy(loc_registry[nrank][n_loc_registered].sh_type, sh_type);
      } else {
           strncpy(loc_registry[nrank][n_loc_registered].sh_type, sh_type, MAX_CHARS_TYPE);
@@ -325,7 +325,7 @@ int enroll_in_sht_registry(void * sht, const char * sh_type, const uint64_t size
      if (!cpsz) {
           strcpy(loc_registry[nrank][n_loc_registered].sh_kidname, strdup("kid name not assigned"));
      }
-     else if (cpsz <= MAX_CHARS_NAME) {
+     else if (cpsz < MAX_CHARS_NAME) {
           strcpy(loc_registry[nrank][n_loc_registered].sh_kidname, global_kid_name[nrank]);
      } else {
           strncpy(loc_registry[nrank][n_loc_registered].sh_kidname, global_kid_name[nrank], MAX_CHARS_NAME);

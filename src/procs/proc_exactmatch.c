@@ -239,7 +239,6 @@ static int proc_cmd_options(int argc, char ** argv,
                     //use the stringhash9a-adjusted value of max_records to reset max_table
                     proc->max_table = proc->exactmatch_table->max_records;
 
-                    free(proc->open_table);
                }
                exact_match_loadfile(proc, optarg);
                break;
@@ -291,7 +290,7 @@ static int proc_cmd_options(int argc, char ** argv,
                          //use the stringhash9a-adjusted value of max_records to reset max_table
                          proc->max_table = proc->exactmatch_table->max_records;
 
-                         free(proc->open_table);
+                         //free(proc->open_table);
                     }
                     if (!stringhash9a_set(proc->exactmatch_table, buf, len)) {
                          // stringhash9a_set returns 0 on success
