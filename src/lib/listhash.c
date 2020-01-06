@@ -250,6 +250,10 @@ static inline listhash_data_t * lh_attach(listhash_t * lh, uint32_t idx1, uint32
           }
      }
 
+     if (cursor->depth >= LH_DIGEST_DEPTH) {
+          return NULL;
+     }
+
      cursor->digest[cursor->depth] = digest;
      data = &cursor->data[cursor->depth];
      data->key = (char *)malloc(keylen);

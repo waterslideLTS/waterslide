@@ -1497,13 +1497,21 @@ void find_specific_module(char * kid, char * libpath) {
           char * module_path_parallel = get_module_path_parallel(kid, dir);
           if (check_kid) {
                if (check_kid_documentation(outfp, module_path_serial, kid)) {
-                    free(module_path_serial);
-                    free(module_path_parallel);
+                    if (module_path_serial) {
+                         free(module_path_serial);
+                    }
+                    if (module_path_parallel) {
+                         free(module_path_parallel);
+                    }
                     return;
                }
                if (check_kid_documentation(outfp, module_path_parallel, kid)) {
-                    free(module_path_serial);
-                    free(module_path_parallel);
+                    if (module_path_serial) {
+                         free(module_path_serial);
+                    }
+                    if (module_path_parallel) {
+                         free(module_path_parallel);
+                    }
                     return;
                }
 
@@ -1518,18 +1526,35 @@ void find_specific_module(char * kid, char * libpath) {
                         get_module_path_parallel(aliased_kid, dir);
 
                     if (check_kid_documentation(outfp, module_path_serial_alias, kid)) {
-                         free(module_path_serial);
-                         free(module_path_parallel);
-                         free(module_path_serial_alias);
-                         free(module_path_parallel_alias);
+                         if (module_path_serial) {
+                              free(module_path_serial);
+                         }
+                         if (module_path_parallel) {
+                              free(module_path_parallel);
+                         }
+                         if (module_path_serial_alias) {
+                              free(module_path_serial_alias);
+                         }
+                         if (module_path_parallel_alias) {
+                              free(module_path_parallel_alias);
+                         }
                          return;
                     }
 
                     if (check_kid_documentation(outfp, module_path_parallel_alias, kid)) {
-                         free(module_path_serial);
-                         free(module_path_parallel);
-                         free(module_path_serial_alias);
-                         free(module_path_parallel_alias);
+                         if (module_path_serial) {
+                              free(module_path_serial);
+                         }
+                         if (module_path_parallel) {
+                              free(module_path_parallel);
+                         }
+                         if (module_path_serial_alias) {
+                              free(module_path_serial_alias);
+                         }
+                         if (module_path_parallel_alias) {
+                              free(module_path_parallel_alias);
+                         }
+ 
                          return;
                     }
                }
@@ -1537,13 +1562,21 @@ void find_specific_module(char * kid, char * libpath) {
                fprintf(stderr, "FAILURE: could not find %s\n", kid);
           } else {
                if (print_module_help(outfp, module_path_serial)) {
-                    free(module_path_serial);
-                    free(module_path_parallel);
+                    if (module_path_serial) {
+                         free(module_path_serial);
+                    }
+                    if (module_path_parallel) {
+                         free(module_path_parallel);
+                    }
                     return;
                }
                if (print_module_help(outfp, module_path_parallel)) {
-                    free(module_path_serial);
-                    free(module_path_parallel);
+                    if (module_path_serial) {
+                         free(module_path_serial);
+                    }
+                    if (module_path_parallel) {
+                         free(module_path_parallel);
+                    }
                     return;
                }
 
@@ -1558,17 +1591,33 @@ void find_specific_module(char * kid, char * libpath) {
                         get_module_path_parallel(aliased_kid, dir);
 
                     if (print_module_help(outfp, module_path_serial_alias)) {
-                         free(module_path_serial);
-                         free(module_path_parallel);
-                         free(module_path_serial_alias);
-                         free(module_path_parallel_alias);
+                         if (module_path_serial) {
+                              free(module_path_serial);
+                         }
+                         if (module_path_parallel) {
+                              free(module_path_parallel);
+                         }
+                         if (module_path_serial_alias) {
+                              free(module_path_serial_alias);
+                         }
+                         if (module_path_parallel_alias) {
+                              free(module_path_parallel_alias);
+                         }
                          return;
                     }
                     if (print_module_help(outfp, module_path_parallel_alias)) {
-                         free(module_path_serial);
-                         free(module_path_parallel);
-                         free(module_path_serial_alias);
-                         free(module_path_parallel_alias);
+                         if (module_path_serial) {
+                              free(module_path_serial);
+                         }
+                         if (module_path_parallel) {
+                              free(module_path_parallel);
+                         }
+                         if (module_path_serial_alias) {
+                              free(module_path_serial_alias);
+                         }
+                         if (module_path_parallel_alias) {
+                              free(module_path_parallel_alias);
+                         }
                          return;
                     }
                }
@@ -1578,8 +1627,12 @@ void find_specific_module(char * kid, char * libpath) {
                fprintf(stderr,"unable to open module %s\n", kid);
           }
          
-          free(module_path_serial);
-          free(module_path_parallel);
+          if (module_path_serial) {
+               free(module_path_serial);
+          }
+          if (module_path_parallel) {
+               free(module_path_parallel);
+          }
           dir = strsep(&buf, DIRSEP_STR);
      }
 }

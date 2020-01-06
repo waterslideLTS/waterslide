@@ -108,7 +108,7 @@ int extract_parameters(const char *instring, char *param1, char *param2, char *f
   if (!ptr) {
     return 0;
   }
-  if (ptr-paramstart > paramlimit) {
+  if ((ptr-paramstart) >= paramlimit) {
     tool_print("parameter too large");
     return 0;
   }
@@ -120,7 +120,7 @@ int extract_parameters(const char *instring, char *param1, char *param2, char *f
   if (!ptr) {
     return 0;
   }
-  if (ptr-paramstart > paramlimit) {
+  if ((ptr-paramstart) >= paramlimit) {
     tool_print("parameter too large");
     return 0;
   }

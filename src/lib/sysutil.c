@@ -379,11 +379,11 @@ FILE * sysutil_open_timedfile(char * basefile, char * extension,
      if (outfilename) {
           int len = strlen(workingfile);
           //truncate somehow..
-          if (len > outfilename_len) {
-               len = outfilename_len;
+          if (len >= outfilename_len) {
+               len = outfilename_len - 1;
           }
           memcpy(outfilename, workingfile, len);
-          outfilename[len] = 0;
+          outfilename[len] = 0; //null out last byte
      }
 
      return rfp;
