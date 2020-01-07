@@ -534,7 +534,7 @@ static int write_kafka(proc_instance_t * proc, void * buf, size_t len,
           flags = 0;
 
      }
-
+#ifdef KTEST
      if (proc->meta_process_cnt % 10000 == 9999) {
           rd_kafka_message_t msg; 
           msg.payload = buf;
@@ -551,6 +551,7 @@ static int write_kafka(proc_instance_t * proc, void * buf, size_t len,
 
           return 1;
      }
+#endif
 
      int retry = 0;
      while (retry <= proc->retry_cnt) {
