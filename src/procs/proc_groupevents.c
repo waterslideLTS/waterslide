@@ -75,6 +75,8 @@ char proc_requires[]           =  "";
 proc_port_t proc_input_ports[] =  {
      {"none","Store value at key"},
      {"EXPIRE","trigger expiration of all buffered state"},
+     {"ENDSTATE","trigger expiration of a specific key"},
+     {"END","trigger expiration of a specific key"},
      {NULL, NULL}
 };
 char *proc_tuple_container_labels[] =  {NULL};
@@ -99,6 +101,7 @@ typedef struct _key_data_t {
 static int proc_tuple(void *, wsdata_t*, ws_doutput_t*, int);
 static int proc_flush(void *, wsdata_t*, ws_doutput_t*, int);
 static int proc_expire(void *, wsdata_t*, ws_doutput_t*, int);
+static int proc_endstate(void *, wsdata_t*, ws_doutput_t*, int);
 
 typedef struct _proc_instance_t {
      uint64_t meta_process_cnt;
@@ -185,6 +188,19 @@ static int proc_cmd_options(int argc, char ** argv,
      return 1;
 }
 
+//write buffered data onto tuple
+static void emit_values_to_tuple(proc_instance_t * proc,
+                                 key_data_t * kdata,
+                                 wsdata_t * tdata) {
+
+     //attached all stored content
+     uint16_t i;
+     for (i = 0; i < kdata->valuecnt; i++) {
+          add_tuple_member(tdata, kdata->value[i]);
+     }
+     
+}
+
 //create a new tuple for emitting output
 //  - called when expiration conditions are met
 static void emit_values(proc_instance_t * proc, key_data_t * kdata) {
@@ -195,9 +211,11 @@ static void emit_values(proc_instance_t * proc, key_data_t * kdata) {
      } 
 
      wsdata_add_reference(tdata);
+     
      if (proc->label_output) {
           wsdata_add_label(tdata, proc->label_output);
      }
+
      if (kdata->key) {
           add_tuple_member(tdata, kdata->key);
      }
@@ -205,14 +223,11 @@ static void emit_values(proc_instance_t * proc, key_data_t * kdata) {
           add_tuple_member(tdata, kdata->common);
      }
 
-     //flush all stored content
-     uint16_t i;
-     for (i = 0; i < kdata->valuecnt; i++) {
-          add_tuple_member(tdata, kdata->value[i]);
-     }
+     emit_values_to_tuple(proc, kdata, tdata);
 
      //if any keepone present - scan each keep-one position for any values
      if (kdata->keepone_cnt) {
+          uint16_t i;
           for (i = 0; i < proc->keepone_cnt; i++) {
                if (kdata->value[proc->maxvalues + i]) {
                     add_tuple_member(tdata, kdata->value[proc->maxvalues + i]);
@@ -239,18 +254,7 @@ static void emit_state_preserve_keys(proc_instance_t * proc, key_data_t * kdata)
      kdata->valuecnt = 0;
 }
 
-//emit any data and delete state
-static void emit_state(void * vdata, void * vproc) {
-     dprint("emit_state");
-     proc_instance_t * proc = (proc_instance_t *)vproc;
-     key_data_t * kdata = (key_data_t *)vdata;
-     dprint("emit state");
-
-     //see if it is worth emitting data out
-     if (kdata->valuecnt) {
-          emit_values(proc, kdata);
-     }
-
+static void clean_state(proc_instance_t * proc, key_data_t * kdata) {
      //clean up references
      if (kdata->key) {
           wsdata_delete(kdata->key);
@@ -274,6 +278,22 @@ static void emit_state(void * vdata, void * vproc) {
      }
 
      memset(kdata, 0, proc->key_struct_size);
+
+}
+
+//emit any data and delete state
+static void emit_state(void * vdata, void * vproc) {
+     dprint("emit_state");
+     proc_instance_t * proc = (proc_instance_t *)vproc;
+     key_data_t * kdata = (key_data_t *)vdata;
+     dprint("emit state");
+
+     //see if it is worth emitting data out
+     if (kdata->valuecnt) {
+          emit_values(proc, kdata);
+     }
+
+     clean_state(proc, kdata);
 }
 
 //used when walking state table to see if records should be expired
@@ -389,6 +409,14 @@ proc_process_t proc_input_set(void * vinstance, wsdatatype_t * meta_type,
      proc_instance_t * proc = (proc_instance_t *)vinstance;
 
 
+     if (!proc->outtype_tuple) {
+          proc->outtype_tuple = ws_add_outtype(olist, dtype_tuple, NULL);
+     }
+     if ((meta_type == dtype_tuple) && 
+         (wslabel_match(type_table, port, "ENDSTATE") ||
+          wslabel_match(type_table, port, "END"))) {
+          return proc_endstate;
+     }
      if (wslabel_match(type_table, port, "EXPIRE")) {
           if (wsdatatype_match(type_table, meta_type, "TUPLE_TYPE")) {
                if (!proc->session_walker) {
@@ -403,12 +431,9 @@ proc_process_t proc_input_set(void * vinstance, wsdatatype_t * meta_type,
      }
 
      if (wsdatatype_match(type_table, meta_type, "FLUSH_TYPE")) {
-          proc->outtype_tuple = ws_add_outtype(olist, wsdatatype_get(type_table,
-                                                                     "TUPLE_TYPE"), NULL);
           return proc_flush;
      }
      if (wsdatatype_match(type_table, meta_type, "TUPLE_TYPE")) {
-          proc->outtype_tuple = ws_add_outtype(olist, meta_type, NULL);
           return proc_tuple;
      }
 
@@ -509,6 +534,40 @@ static int proc_expire(void * vinstance, wsdata_t* input_data,
      return 1;
 }
 
+//process when a event at a specific port wants to flush values for a given key
+static int proc_endstate(void * vinstance, wsdata_t* input_data,
+                        ws_doutput_t * dout, int type_index) {
+
+     dprint("proc_endstate");
+     proc_instance_t * proc = (proc_instance_t*)vinstance;
+     proc->meta_process_cnt++;
+     key_data_t * kdata = NULL;
+     wsdata_t * key = NULL;
+
+     //check if using hashtable.. otherwise global key
+     if (proc->global_key) {
+          kdata = proc->global_key;
+     }
+     else if (proc->session_table) {
+          tuple_nested_search(input_data, &proc->nest_key,
+                              nest_search_key,
+                              proc, &key);
+          if (key) {
+               kdata = (key_data_t *) stringhash5_find_attach_wsdata(proc->session_table, key);
+          }
+     }
+
+     if (kdata) {
+          emit_values_to_tuple(proc, kdata, input_data);
+          clean_state(proc, kdata);
+          if (key) {
+               stringhash5_delete_wsdata(proc->session_table, key);
+          }
+     }
+     ws_set_outdata(input_data, proc->outtype_tuple, dout);
+
+     return 1;
+}
 
 //// proc processing function assigned to a specific data type in proc_io_init
 static int proc_tuple(void * vinstance, wsdata_t* input_data,
