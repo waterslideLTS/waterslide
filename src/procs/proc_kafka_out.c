@@ -65,6 +65,8 @@ proc_option_t proc_opts[] = {
      "set how many milli-seconds to wait when publishing fails",0,0},
      {'R',"","count",
      "set how many times a retry should wait before publishing fails",0,0},
+     {'C',"","count",
+     "number of items to hold in recover buffer when deliery fails in mid-transmission",0,0},
      {'Z',"","",
      "zero copy buffers",0,0},
      //the following must be left as-is to signify the end of the array
@@ -84,6 +86,15 @@ proc_port_t proc_input_ports[] =  {
 static int proc_tuple(void *, wsdata_t*, ws_doutput_t*, int);
 static int proc_flush(void *, wsdata_t*, ws_doutput_t*, int);
 static int proc_stats(void *, wsdata_t*, ws_doutput_t*, int);
+
+typedef struct _recover_list_t {
+     void * payload;
+     int    payload_len;
+     void * key;
+     int    key_len;
+     wsdata_t * ref;
+     struct _recover_list_t * next;
+} recover_list_t;
 
 typedef struct _proc_instance_t {
      uint64_t meta_process_cnt;
@@ -131,6 +142,17 @@ typedef struct _proc_instance_t {
      ws_outtype_t * outtype_tuple;
 
      int zerocopy;
+
+     int recover_max; 
+     int recover_cnt;
+     recover_list_t * recover_freeq;
+     recover_list_t * recover_head;
+     uint64_t recover_attempts;
+     uint64_t recover_success;
+     uint64_t recover_fail; //when list is too full
+     wslabel_t * label_recover_attempts;
+     wslabel_t * label_recover_success;
+     wslabel_t * label_recover_fail;
 } proc_instance_t;
 
 //handle options for command line config - like kafkacat or java clients do
@@ -168,7 +190,7 @@ static int proc_cmd_options(int argc, char ** argv,
 
      int op;
 
-     while ((op = getopt(argc, argv, "r:R:Zzw:T:t:B:b:x:X:K:k:")) != EOF) {
+     while ((op = getopt(argc, argv, "c:C:r:R:Zzw:T:t:B:b:x:X:K:k:")) != EOF) {
           switch (op) {
           case 'R':
                proc->retry_cnt = atoi(optarg);
@@ -207,6 +229,11 @@ static int proc_cmd_options(int argc, char ** argv,
                wslabel_nested_search_build(type_table, &proc->nest_key,
                                            optarg);
                break;
+          case 'c':
+          case 'C':
+               proc->recover_max = atoi(optarg);
+               tool_print("recovery count set at %d items", proc->recover_max);
+               break;
           default:
                return 0;
           }
@@ -237,12 +264,98 @@ static void throttle_cb (rd_kafka_t *rk, const char *broker_name,
 	       broker_name, broker_id);
 }
 
+static int do_recovery_wsdata(proc_instance_t * proc,
+                              void * payload, int payload_len,
+                              void * key, int key_len,
+                              wsdata_t * ref) {
+     dprint("do_recovery_wsdata %d", proc->recover_cnt);
+     recover_list_t * cursor;
+     if (proc->recover_freeq) {
+          cursor = proc->recover_freeq;
+          proc->recover_freeq = cursor->next;
+          memset(cursor, 0, sizeof(recover_list_t));
+     }
+     else {
+          cursor = (recover_list_t *) calloc(1, sizeof(recover_list_t));
+     }
+     if (!cursor) {
+          proc->recover_fail++;
+          return 0;
+     }
+     cursor->next = proc->recover_head;
+     proc->recover_head = cursor;
+     proc->recover_cnt++;
+
+     cursor->ref = ref;
+     cursor->payload = payload;
+     cursor->payload_len = payload_len;
+     cursor->key = key;
+     cursor->key_len = key_len;
+
+     return 1;
+}
+
+static int do_recovery(proc_instance_t * proc, const rd_kafka_message_t * rkmessage) {
+     dprint("do_recovery %d", proc->recover_cnt);
+     proc->recover_attempts++;
+     if (!proc->recover_max || (proc->recover_cnt >= proc->recover_max)) {
+          proc->recover_fail++;
+          return 0;
+     }
+     if ((rkmessage->len <= 0) || (rkmessage->key_len < 0)) {
+          proc->recover_fail++;
+          return 0;
+     }
+     int bufmax = rkmessage->len + rkmessage->key_len;
+     char * buf = NULL;
+     int len = 0;
+     wsdata_t * ref = wsdata_create_buffer(bufmax, &buf, &len);
+     if (!ref) {
+          proc->recover_fail++;
+          return 0;
+     }
+     memcpy(buf, rkmessage->payload, rkmessage->len);
+     if (rkmessage->key_len > 0) {
+          memcpy(buf + rkmessage->len, rkmessage->key, rkmessage->key_len);
+     }
+     wsdata_add_reference(ref);
+
+     int rtn = do_recovery_wsdata(proc, buf, rkmessage->len,
+                                  buf + rkmessage->len, rkmessage->key_len, ref);
+
+     if (!rtn) {
+          wsdata_delete(ref);
+     }
+     return rtn;
+}
+
+static int do_recovery_zerocopy(proc_instance_t * proc, const rd_kafka_message_t * rkmessage) {
+     dprint("do_recovery_zerocopy %d", proc->recover_cnt);
+     proc->recover_attempts++;
+     if (!proc->recover_max || (proc->recover_cnt >= proc->recover_max)) {
+          proc->recover_fail++;
+          return 0;
+     }
+     wsdata_t *ref = (wsdata_t *)rkmessage->_private;
+     if (!ref) {
+          proc->recover_fail++;
+          return 0;
+     }
+     if (rkmessage->len <= 0) {
+          proc->recover_fail++;
+          return 0;
+     }
+     return do_recovery_wsdata(proc, rkmessage->payload, rkmessage->len,
+                               rkmessage->key, rkmessage->key_len, ref);
+}
+
 //register callback for message delivery - record every produce message
 static void dr_msg_cb (rd_kafka_t *rk,
                        const rd_kafka_message_t *rkmessage, void *vproc) {
      proc_instance_t * proc = (proc_instance_t*)vproc;
 	if (rkmessage->err) {
           proc->delivery_fail++;
+          do_recovery(proc, rkmessage);
 		dprint("%% Message delivery failed: %s",
                  rd_kafka_err2str(rkmessage->err));
 	}
@@ -260,6 +373,9 @@ static void dr_msg_cb_zerocopy (rd_kafka_t *rk,
           proc->delivery_fail++;
 		dprint("%% zq_Message delivery failed: %s",
                  rd_kafka_err2str(rkmessage->err));
+          if (do_recovery_zerocopy(proc, rkmessage)) {
+               return;
+          }
 	}
 	else {
           proc->delivery_success++;
@@ -299,6 +415,13 @@ int proc_init(wskid_t * kid, int argc, char ** argv, void ** vinstance, ws_sourc
      proc->label_retry_succeed = wsregister_label(type_table, "RETRY_SUCCEED");
      proc->label_fail_loops = wsregister_label(type_table, "FAIL_LOOPS");
      proc->label_queue_full_waits = wsregister_label(type_table, "QUEUE_FULL_WAITS");
+
+     proc->label_recover_attempts = wsregister_label(type_table,
+                                                     "RECOVER_ATTEMPTS"); 
+     proc->label_recover_success = wsregister_label(type_table,
+                                                     "RECOVER_SUCCESS"); 
+     proc->label_recover_fail = wsregister_label(type_table,
+                                                     "RECOVER_FAIL"); 
 
      //set up callbacks for output stats
      proc->conf = rd_kafka_conf_new();
@@ -401,6 +524,7 @@ static int write_kafka(proc_instance_t * proc, void * buf, size_t len,
                        const void* key, size_t klen, wsdata_t * data,
                        wsdata_t * kdata) {
 
+     
      int flags = RD_KAFKA_MSG_F_COPY;
      if (proc->zerocopy) {
           wsdata_add_reference(data);
@@ -410,6 +534,24 @@ static int write_kafka(proc_instance_t * proc, void * buf, size_t len,
           flags = 0;
 
      }
+#ifdef KTEST
+     if (proc->meta_process_cnt % 10000 == 9999) {
+          rd_kafka_message_t msg; 
+          msg.payload = buf;
+          msg.len = len;
+          msg.key = key;
+          msg.key_len = klen;
+          if (proc->zerocopy) {
+               msg._private = data;
+               do_recovery_zerocopy(proc, &msg);
+          }
+          else {
+               do_recovery(proc, &msg);
+          }
+
+          return 1;
+     }
+#endif
 
      int retry = 0;
      while (retry <= proc->retry_cnt) {
@@ -510,7 +652,36 @@ static int proc_nest_value_callback(void * vproc, void * vkdata,
      }
 }
 
+static int recover_publish(proc_instance_t * proc) {
+     dprint("recover_publish %d", proc->recover_cnt);
 
+     while(proc->recover_head) {
+          recover_list_t * cursor = proc->recover_head;
+          proc->recover_head = cursor->next;
+
+          int success = write_kafka(proc,
+                                    cursor->payload, cursor->payload_len,
+                                    cursor->key, cursor->key_len,
+                                    cursor->ref, NULL);
+
+          if (cursor->ref) {
+               wsdata_delete(cursor->ref);
+               cursor->ref = NULL;
+          }
+          proc->recover_cnt--;
+          cursor->next = proc->recover_freeq;
+          proc->recover_freeq = cursor;
+
+          if (!success) {
+               proc->recover_fail++;
+               return 0;
+          }
+          else {
+               proc->recover_success++;
+          }
+     }
+     return 1;
+}
 
 //// proc processing function assigned to a specific data type in proc_io_init
 //
@@ -518,6 +689,9 @@ static int proc_tuple(void * vinstance, wsdata_t* input_data,
                       ws_doutput_t * dout, int type_index) {
 
      proc_instance_t * proc = (proc_instance_t*)vinstance;
+
+     recover_publish(proc);
+
 
      wsdata_t * key = NULL;
 
@@ -588,6 +762,14 @@ static int proc_stats(void * vinstance, wsdata_t* input_data,
      tuple_member_create_uint64(input_data, proc->queue_full_waits,
                                 proc->label_queue_full_waits);
 
+     if (proc->recover_max) {
+          tuple_member_create_uint64(input_data, proc->recover_attempts,
+                                     proc->label_recover_attempts);
+          tuple_member_create_uint64(input_data, proc->recover_success,
+                                     proc->label_recover_success);
+          tuple_member_create_uint64(input_data, proc->recover_fail,
+                                     proc->label_recover_fail);
+     }
      ws_set_outdata(input_data, proc->outtype_tuple, dout);
      return 1;
 }
@@ -609,8 +791,32 @@ int proc_destroy(void * vinstance) {
      tool_print("fail loops            %" PRIu64, proc->fail_loops);
      tool_print("queue full waits      %" PRIu64, proc->queue_full_waits);
 
+     if (proc->recover_max) {
+          if (proc->recover_cnt) {
+               proc->recover_fail += proc->recover_cnt;
+          }
+          tool_print("recover attempts      %" PRIu64, proc->recover_attempts);
+          tool_print("recover success       %" PRIu64, proc->recover_success);
+          tool_print("recover fail          %" PRIu64, proc->recover_fail);
+     }
+
      if (proc->rk) {
           rd_kafka_destroy(proc->rk);
+     }
+
+     //free up any buffered recovery data
+     while (proc->recover_head) {
+          recover_list_t * cursor = proc->recover_head;
+          proc->recover_head = cursor->next;
+          if (cursor->ref) {
+               wsdata_delete(cursor->ref);
+          }
+          free(cursor);
+     }
+     while (proc->recover_freeq) {
+          recover_list_t * cursor = proc->recover_freeq;
+          proc->recover_freeq = cursor->next;
+          free(cursor);
      }
 
      //free dynamic allocations
