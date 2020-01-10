@@ -58,7 +58,7 @@ proc_option_t proc_opts[]      =  {
      {'L',"","label",
      "label of output tuple",0,0},
      {'1',"","label",
-     "label of member to store once per group at key",0,0},
+     "label of member to store once per group at key (singletons)",0,0},
      {'M',"","records",
      "maximum table size",0,0},
      //the following must be left as-is to signify the end of the array
@@ -75,8 +75,9 @@ char proc_requires[]           =  "";
 proc_port_t proc_input_ports[] =  {
      {"none","Store value at key"},
      {"EXPIRE","trigger expiration of all buffered state"},
-     {"ENDSTATE","trigger expiration of a specific key"},
-     {"END","trigger expiration of a specific key"},
+     {"ENDSTATE","trigger expiration of a specific key, append values"},
+     {"END","trigger expiration of a specific key, append values"},
+     {"ENDSINGLE","trigger expiration of a specific key, append values and singletons"},
      {NULL, NULL}
 };
 char *proc_tuple_container_labels[] =  {NULL};
@@ -102,6 +103,7 @@ static int proc_tuple(void *, wsdata_t*, ws_doutput_t*, int);
 static int proc_flush(void *, wsdata_t*, ws_doutput_t*, int);
 static int proc_expire(void *, wsdata_t*, ws_doutput_t*, int);
 static int proc_endstate(void *, wsdata_t*, ws_doutput_t*, int);
+static int proc_endsingle(void *, wsdata_t*, ws_doutput_t*, int);
 
 typedef struct _proc_instance_t {
      uint64_t meta_process_cnt;
@@ -201,6 +203,21 @@ static void emit_values_to_tuple(proc_instance_t * proc,
      
 }
 
+static void emit_singletons_to_tuple(proc_instance_t * proc,
+                                 key_data_t * kdata,
+                                 wsdata_t * tdata) {
+
+     //if any keepone present - scan each keep-one position for any values
+     if (kdata->keepone_cnt) {
+          uint16_t i;
+          for (i = 0; i < proc->keepone_cnt; i++) {
+               if (kdata->value[proc->maxvalues + i]) {
+                    add_tuple_member(tdata, kdata->value[proc->maxvalues + i]);
+               }
+          }
+     }
+
+}
 //create a new tuple for emitting output
 //  - called when expiration conditions are met
 static void emit_values(proc_instance_t * proc, key_data_t * kdata) {
@@ -224,16 +241,7 @@ static void emit_values(proc_instance_t * proc, key_data_t * kdata) {
      }
 
      emit_values_to_tuple(proc, kdata, tdata);
-
-     //if any keepone present - scan each keep-one position for any values
-     if (kdata->keepone_cnt) {
-          uint16_t i;
-          for (i = 0; i < proc->keepone_cnt; i++) {
-               if (kdata->value[proc->maxvalues + i]) {
-                    add_tuple_member(tdata, kdata->value[proc->maxvalues + i]);
-               }
-          }
-     }
+     emit_singletons_to_tuple(proc, kdata, tdata);
 
      ws_set_outdata(tdata, proc->outtype_tuple, proc->dout);
      wsdata_delete(tdata);
@@ -413,6 +421,10 @@ proc_process_t proc_input_set(void * vinstance, wsdatatype_t * meta_type,
           proc->outtype_tuple = ws_add_outtype(olist, dtype_tuple, NULL);
      }
      if ((meta_type == dtype_tuple) && 
+         wslabel_match(type_table, port, "ENDSINGLE")) {
+          return proc_endsingle;
+     }
+     if ((meta_type == dtype_tuple) && 
          (wslabel_match(type_table, port, "ENDSTATE") ||
           wslabel_match(type_table, port, "END"))) {
           return proc_endstate;
@@ -559,6 +571,42 @@ static int proc_endstate(void * vinstance, wsdata_t* input_data,
 
      if (kdata) {
           emit_values_to_tuple(proc, kdata, input_data);
+          clean_state(proc, kdata);
+          if (key) {
+               stringhash5_delete_wsdata(proc->session_table, key);
+          }
+     }
+     ws_set_outdata(input_data, proc->outtype_tuple, dout);
+
+     return 1;
+}
+
+//expire data at key - appending values and singletons to triggering tuple
+static int proc_endsingle(void * vinstance, wsdata_t* input_data,
+                          ws_doutput_t * dout, int type_index) {
+
+     dprint("proc_endstate");
+     proc_instance_t * proc = (proc_instance_t*)vinstance;
+     proc->meta_process_cnt++;
+     key_data_t * kdata = NULL;
+     wsdata_t * key = NULL;
+
+     //check if using hashtable.. otherwise global key
+     if (proc->global_key) {
+          kdata = proc->global_key;
+     }
+     else if (proc->session_table) {
+          tuple_nested_search(input_data, &proc->nest_key,
+                              nest_search_key,
+                              proc, &key);
+          if (key) {
+               kdata = (key_data_t *) stringhash5_find_attach_wsdata(proc->session_table, key);
+          }
+     }
+
+     if (kdata) {
+          emit_values_to_tuple(proc, kdata, input_data);
+          emit_singletons_to_tuple(proc, kdata, input_data);
           clean_state(proc, kdata);
           if (key) {
                stringhash5_delete_wsdata(proc->session_table, key);
