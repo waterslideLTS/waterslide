@@ -44,6 +44,8 @@ proc_option_t proc_opts[]      =  {
      /*  'option character', "long option string", "option argument",
 	 "option description", <allow multiple>, <required>*/
      //the following must be left as-is to signify the end of the array
+     {'t',"","",
+     "add timestamp of current time to output tuple",0,0},
      {' ',"","",
      "",0,0}
 };
@@ -77,6 +79,7 @@ typedef struct _proc_instance_t {
      uint64_t event_cnt;
      uint64_t outcnt;
 
+     int do_timestamp;
      ws_outtype_t * outtype_tuple;
      time_t first_time;
      time_t last_time;
@@ -87,6 +90,7 @@ typedef struct _proc_instance_t {
      wslabel_t * label_event_rate;
      wslabel_t * label_byte_cnt;
      wslabel_t * label_bandwidth;
+     wslabel_t * label_datetime;
 } proc_instance_t;
 
 static int proc_cmd_options(int argc, char ** argv, 
@@ -94,8 +98,12 @@ static int proc_cmd_options(int argc, char ** argv,
 
      int op;
 
-     while ((op = getopt(argc, argv, "")) != EOF) {
+     while ((op = getopt(argc, argv, "tT")) != EOF) {
           switch (op) {
+          case 't':
+          case 'T':
+               proc->do_timestamp = 1;
+               break;
           default:
                return 0;
           }
@@ -121,6 +129,7 @@ int proc_init(wskid_t * kid, int argc, char ** argv, void ** vinstance, ws_sourc
      proc->label_event_cnt = wsregister_label(type_table, "EVENT_CNT");
      proc->label_event_rate = wsregister_label(type_table, "EVENT_RATE");
      proc->label_bandwidth = wsregister_label(type_table, "BANDWIDTH");
+     proc->label_datetime = wsregister_label(type_table, "DATETIME");
 
      //read in command options
      if (!proc_cmd_options(argc, argv, proc)) {
@@ -322,7 +331,7 @@ static int proc_flush(void * vinstance, wsdata_t* input_data,
      }
     
      if(0 == ws_check_subscribers(proc->outtype_tuple)) {
-          fprintf(stderr, "no subscriber found\n");
+          dprint("no subscriber found");
           // default to the detailed but rigid-way of bw summmary.
           // On the other hand, if we have a 'print' kid (a valid subscriber), then we MAY
           // want to handle output in a datatype-specific format
@@ -335,6 +344,10 @@ static int proc_flush(void * vinstance, wsdata_t* input_data,
      if(!tdata) {
           error_print("unable to allocate memory .. see '%s:%d'", __FILE__, __LINE__);
           return 0;
+     }
+     if(proc->do_timestamp) {
+         time_t sec = time(NULL);
+         tuple_member_create_sec(tdata, sec, proc->label_datetime); 
      }
      if (proc->event_cnt) {
           print_item_stats_tuple(proc, tdata);
