@@ -38,8 +38,8 @@ SOFTWARE.
 CPP_OPEN
 #endif // __cplusplus
 
-#define STR2TIME_DEFAULT_FORMAT "%Y%m%d %H:%M:%S"
-#define STR2TIME_WSSTD_FORMAT "%Y.%m.%d %H:%M:%S"
+#define STR2TIME_DEFAULT_FORMAT "%Y-%m-%dT%H:%M:%SZ"
+#define STR2TIME_WSSTD_FORMAT "%Y-%m-%dT%H:%M:%SZ"
 #if !defined(__USE_XOPEN) && !defined(__FreeBSD__)
 #define _TIMEPARSE_UNUSABLE
 #endif
