@@ -29,8 +29,8 @@ SOFTWARE.
 #include <stdio.h>
 #define WSDT_TS_MSEC(s,u) (((s) * 1000) + (((u) / 1000) % 1000))
 
-static inline int wsdt_print_ts_sec(FILE * stream, time_t tsec)
-{
+static inline int wsdt_print_ts_sec_usec(FILE * stream, time_t tsec,
+                                         unsigned int usec) {
      int s;
      struct tm tdata;
      struct tm *tp;
@@ -45,24 +45,35 @@ static inline int wsdt_print_ts_sec(FILE * stream, time_t tsec)
      s = tsec % 86400;
      stime = tsec - s;
      tp = gmtime_r(&stime, &tdata);
-     return fprintf(stream,"%04d.%02d.%02d %02d:%02d:%02d",
-                    tp->tm_year+1900,
-                    tp->tm_mon+1, tp->tm_mday,
-                    s / 3600, (s % 3600) / 60,
-                    s % 60);
+
+     if (usec) {
+          return fprintf(stream,"%04d-%02d-%02dT%02d:%02d:%02d.%06uZ",
+                         tp->tm_year+1900,
+                         tp->tm_mon+1, tp->tm_mday,
+                         s / 3600, (s % 3600) / 60,
+                         s % 60,
+                         usec);
+     }
+     else {
+          return fprintf(stream,"%04d-%02d-%02dT%02d:%02d:%02dZ",
+                         tp->tm_year+1900,
+                         tp->tm_mon+1, tp->tm_mday,
+                         s / 3600, (s % 3600) / 60,
+                         s % 60);
+     }
+}
+
+
+static inline int wsdt_print_ts_sec(FILE * stream, time_t tsec) {
+     return wsdt_print_ts_sec_usec(stream, tsec, 0);
 }
 
 static inline int wsdt_print_ts(FILE * stream, wsdt_ts_t * ts) {
-     int rtn = 0;
-     rtn += wsdt_print_ts_sec(stream,ts->sec);
-     if (ts->usec) {
-          rtn += fprintf(stream, ".%06u", (unsigned int)ts->usec);
-     }
-     return rtn;
+     return wsdt_print_ts_sec_usec(stream, ts->sec, (unsigned int)ts->usec);
 }
 
-static inline int wsdt_snprint_ts_sec(char * buf, int len, time_t tsec)
-{
+static inline int wsdt_snprint_ts_sec_usec(char * buf, int len, time_t tsec,
+                                           unsigned int usec) {
      int s;
      struct tm tdata;
      struct tm *tp;
@@ -77,25 +88,29 @@ static inline int wsdt_snprint_ts_sec(char * buf, int len, time_t tsec)
      s = tsec % 86400;
      stime = tsec - s;
      tp = gmtime_r(&stime, &tdata);
-     return snprintf(buf, len, "%04d.%02d.%02d %02d:%02d:%02d",
-                    tp->tm_year+1900,
-                    tp->tm_mon+1, tp->tm_mday,
-                    s / 3600, (s % 3600) / 60,
-                    s % 60);
+     if (usec) {
+          return snprintf(buf, len,"%04d-%02d-%02dT%02d:%02d:%02d.%06uZ",
+                          tp->tm_year+1900,
+                          tp->tm_mon+1, tp->tm_mday,
+                          s / 3600, (s % 3600) / 60,
+                          s % 60,
+                          usec);
+     }
+     else {
+          return snprintf(buf, len, "%04d-%02d-%02dT%02d:%02d:%02dZ",
+                          tp->tm_year+1900,
+                          tp->tm_mon+1, tp->tm_mday,
+                          s / 3600, (s % 3600) / 60,
+                          s % 60);
+     }
+
+}
+static inline int wsdt_snprint_ts_sec(char * buf, int len, time_t tsec) {
+     return wsdt_snprint_ts_sec_usec(buf, len, tsec, 0);
 }
 
 static inline int wsdt_snprint_ts(char * buf, int len, wsdt_ts_t * ts) {
-     int rtn;
-     rtn = wsdt_snprint_ts_sec(buf, len, ts->sec);
-     if ((rtn > 0) && ts->usec && (rtn < len)) {
-          int l;
-          l = snprintf(buf + rtn, len - rtn, ".%06u", (unsigned int)ts->usec);
-          if (l > 0) {
-               rtn += l;
-          }
-     }
-
-     return rtn;
+     return wsdt_snprint_ts_sec_usec(buf, len, ts->sec, (unsigned int) ts->usec);
 }
 
 
