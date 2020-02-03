@@ -61,6 +61,8 @@ proc_option_t proc_opts[]      =  {
      "label of member to store once per group at key (singletons)",0,0},
      {'M',"","records",
      "maximum table size",0,0},
+     {'G',"","",
+     "gradually flush data out of state table to reduce memory impact on exit",0,0},
      //the following must be left as-is to signify the end of the array
      {' ',"","",
      "",0,0}
@@ -87,6 +89,8 @@ char *proc_synopsis[]          =  {"groupevents <LABEL of key> -C <LABEL of comm
 proc_example_t proc_examples[] =  {
 	{NULL, NULL}
 };
+
+#define MIN_GRADUAL_FLUSH_CNT (100)
 
 typedef struct _key_data_t {
      uint16_t valuecnt;
@@ -135,6 +139,11 @@ typedef struct _proc_instance_t {
 
      key_data_t * global_key; //when not key is specified, use a global key table
 
+     int gradual_flush;
+     uint64_t gradual_flush_input_cnt;
+     stringhash5_walker_t * flush_walker;
+     uint64_t gradual_loops;
+     uint64_t gradual_flush_event_cnt;
 } proc_instance_t;
 
 
@@ -143,8 +152,12 @@ static int proc_cmd_options(int argc, char ** argv,
      dprint("proc_cmd_options");
      int op;
 
-     while ((op = getopt(argc, argv, "1:L:v:V:c:C:N:n:M:")) != EOF) {
+     while ((op = getopt(argc, argv, "Gg1:L:v:V:c:C:N:n:M:")) != EOF) {
           switch (op) {
+          case 'g':
+          case 'G':
+               proc->gradual_flush = 1;
+               break;
           case 'L':
                proc->label_output = wsregister_label(type_table, optarg);
                break;
@@ -245,6 +258,7 @@ static void emit_values(proc_instance_t * proc, key_data_t * kdata) {
 
      ws_set_outdata(tdata, proc->outtype_tuple, proc->dout);
      wsdata_delete(tdata);
+     proc->outcnt++;
 }
 
 //create a new tuple for emitting output
@@ -316,6 +330,17 @@ static void expire_state(void * vdata, void * vproc) {
      }
 }
 
+static int gradual_emit(void * vdata, void * vproc) {
+     key_data_t * kdata = (key_data_t *)vdata;
+     proc_instance_t * proc = (proc_instance_t*)vproc;
+
+     if (kdata->valuecnt) {
+          emit_values(proc, kdata);
+     }
+
+     clean_state(proc, kdata);
+     return 0; //delete data
+}
 
 static int check_expiration(void * vdata, void * vproc) {
      dprint("checking expiration");
@@ -577,6 +602,7 @@ static int proc_endstate(void * vinstance, wsdata_t* input_data,
           }
      }
      ws_set_outdata(input_data, proc->outtype_tuple, dout);
+     proc->outcnt++;
 
      return 1;
 }
@@ -613,6 +639,7 @@ static int proc_endsingle(void * vinstance, wsdata_t* input_data,
           }
      }
      ws_set_outdata(input_data, proc->outtype_tuple, dout);
+     proc->outcnt++;
 
      return 1;
 }
@@ -706,6 +733,49 @@ static int proc_tuple(void * vinstance, wsdata_t* input_data,
      return 1;
 }
 
+
+static int gradual_flush(proc_instance_t * proc) {
+     if (!proc->flush_walker) {
+          proc->flush_walker =
+               stringhash5_walker_init(proc->session_table,
+                                       gradual_emit, proc);
+          if (!proc->flush_walker) {
+               return 0;
+          }
+
+          proc->gradual_flush_input_cnt = proc->meta_process_cnt;
+     }
+     proc->gradual_loops++;
+     uint64_t target_outcnt = proc->outcnt + MIN_GRADUAL_FLUSH_CNT;
+
+     uint64_t loop_target;
+
+     ///detect if any new data arrived since start of gradual flush loop+1..
+     if (proc->gradual_flush_input_cnt == proc->meta_process_cnt) {
+          //no additional input detected - loop once
+          loop_target = proc->flush_walker->loop + 1;
+     }
+     else {
+          //additional input detected - loop twice
+          loop_target = proc->flush_walker->loop + 2;
+     }
+   
+     uint64_t start_cnt = proc->outcnt; 
+     //start flushing - detect stop conditions 
+     while ((proc->outcnt <= target_outcnt) && 
+            (proc->flush_walker->loop < loop_target)) {
+        stringhash5_walker_next(proc->flush_walker);
+     }
+     if (start_cnt < proc->outcnt) {
+          uint64_t ecnt = proc->outcnt - start_cnt;
+          tool_print("gradual flush %" PRIu64 " records",
+                     ecnt);
+          proc->gradual_flush_event_cnt += ecnt;
+     }
+
+     return 1;
+}
+
 static int proc_flush(void * vinstance, wsdata_t* input_data,
                         ws_doutput_t * dout, int type_index) {
      proc_instance_t * proc = (proc_instance_t*)vinstance;
@@ -719,7 +789,13 @@ static int proc_flush(void * vinstance, wsdata_t* input_data,
           emit_state(proc->global_key, proc);
      }
      else if (proc->session_table) {
-          stringhash5_scour_and_flush(proc->session_table, emit_state, proc);
+          if (proc->gradual_flush) {
+               return gradual_flush(proc);
+               
+          }
+          else {
+               stringhash5_scour_and_flush(proc->session_table, emit_state, proc);
+          }
      }
 
      return 1;
@@ -731,6 +807,12 @@ int proc_destroy(void * vinstance) {
      proc_instance_t * proc = (proc_instance_t*)vinstance;
      tool_print("meta_proc cnt %" PRIu64, proc->meta_process_cnt);
      tool_print("output cnt %" PRIu64, proc->outcnt);
+     if (proc->gradual_loops) {
+          tool_print("gradual loop cnt %" PRIu64, proc->gradual_loops);
+     }
+     if (proc->gradual_flush_event_cnt) {
+          tool_print("gradual flushed events %" PRIu64, proc->gradual_flush_event_cnt);
+     }
 
      //destroy table
      if (proc->global_key) {
