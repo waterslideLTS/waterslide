@@ -133,7 +133,7 @@ static inline void add_scores(proc_instance_t *proc,
                               wsdata_t * tup, key_data_t * kd, 
                               ws_doutput_t * dout,
                               ws_outtype_t * outtype_tuple) {
-     tuple_member_create_uint(tup, kd->cnt, proc->label_cnt);
+     tuple_member_create_uint64(tup, kd->cnt, proc->label_cnt);
      if (proc->do_pct) {
           tuple_member_create_double(tup,
                                      (double)kd->cnt/(double)proc->totalcnt,
