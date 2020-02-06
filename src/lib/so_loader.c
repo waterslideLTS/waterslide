@@ -399,6 +399,11 @@ static int so_load_wsprockeystate(void * sh_file_handle,
 
      module->kskid->name = (char *) dlsym(sh_file_handle,"proc_name");
 
+     int * gradual_expire;
+     gradual_expire = (int*)dlsym(sh_file_handle,"prockeystate_gradual_expire");
+     if (gradual_expire) {
+          module->kskid->gradual_expire = *gradual_expire;
+     }
 
      if (!module->kskid->option_str) {
           module->kskid->option_str = "";

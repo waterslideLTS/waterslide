@@ -54,12 +54,19 @@ typedef struct _wsprockeystate_inst_t {
      uint64_t rec;
 
      char * sharelabel;
+
+     uint32_t expire_generation;
+     uint32_t loop_generation;
+     int loop_started;
+     int loop_target;
+     stringhash5_walker_t * expire_walker;
 } wsprockeystate_inst_t;
 
 //function prototypes for local functions
 static int wsprockeystate_process_key(void *, wsdata_t*, ws_doutput_t*, int);
 static int wsprockeystate_process_keyvalue(void *, wsdata_t*, ws_doutput_t*, int);
 static int wsprockeystate_delete_key(void *, wsdata_t*, ws_doutput_t*, int);
+static int wsprockeystate_expire_port(void *, wsdata_t*, ws_doutput_t*, int);
 static int wsprockeystate_process_flush(void *, wsdata_t*, ws_doutput_t*, int);
 
 
@@ -97,6 +104,41 @@ static int wsprockeystate_cmd_options(int argc, char * const * argv,
           tool_print("%s using key with label %s",
                      proc->kid->name, argv[optind]);
           return 1;
+     }
+     return 1;
+}
+
+static inline uint32_t * wsprockeystate_get_generation_ptr(wsprockeystate_inst_t * proc,
+                                                           void * vdata) {
+     if (!proc->kid->gradual_expire) {
+          return NULL;
+     }
+     uint8_t * bdata = (uint8_t *)vdata;
+     uint8_t * offset = bdata + proc->kid->state_len;
+
+     return (uint32_t*)offset;
+}
+
+//if callback = 0, delete record
+static int wsprockeystate_check_expiration(void * vstate, void * vproc) {
+     wsprockeystate_inst_t * proc = (wsprockeystate_inst_t*)vproc;
+     dprint("checking expiration");
+     
+     uint32_t * pgeneration = wsprockeystate_get_generation_ptr(proc, vstate);
+     if (!pgeneration) {
+          return 0; //delete data
+     }
+     uint32_t generation = *pgeneration;
+
+     dprint("checking expiration %u %u %u", generation, proc->expire_generation,
+            proc->loop_generation);
+
+     if ((generation != proc->expire_generation) &&
+         (generation != proc->loop_generation)) {
+          if (proc->kid->expire_func) {
+               proc->kid->expire_func(proc->kproc, vstate, proc->dout, proc->outtype_tuple);
+          }
+          return 0; //delete data
      }
      return 1;
 }
@@ -179,6 +221,10 @@ int wsprockeystate_init(int argc, char * const * argv, void ** vinstance,
      }
 
      //other init - init the stringhash table
+     int state_len = kid->state_len;
+     if (kid->gradual_expire) {
+          state_len += sizeof(uint32_t); //add extra state to track expiration
+     }
 
      //calloc shared sh5 option struct
      stringhash5_sh_opts_t * sh5_sh_opts;
@@ -192,23 +238,32 @@ int wsprockeystate_init(int argc, char * const * argv, void ** vinstance,
                sh5_sh_opts->proc = proc; 
                if (!stringhash5_create_shared_sht(type_table, (void **)&proc->state_table,
                                                   proc->sharelabel, proc->buflen,
-                                                  kid->state_len, NULL, sh5_sh_opts)) {
+                                                  state_len, NULL, sh5_sh_opts)) {
                     return 0;
                }
           }
           else {
                if (!stringhash5_create_shared_sht(type_table, (void **)&proc->state_table,
                                                   proc->sharelabel, proc->buflen,
-                                                  kid->state_len, NULL, sh5_sh_opts)) {
+                                                  state_len, NULL, sh5_sh_opts)) {
                     return 0;
                }
           }
      }
      else {
-          proc->state_table = stringhash5_create(0, proc->buflen, kid->state_len);
+          proc->state_table = stringhash5_create(0, proc->buflen, state_len);
+          if (!proc->state_table) {
+               return 0;
+          }
           if (kid->expire_func) {
                stringhash5_set_callback(proc->state_table, wsprockeystate_expire, proc);
           }
+     }
+
+     if (kid->gradual_expire && proc->state_table) {
+          proc->expire_walker =
+               stringhash5_walker_init(proc->state_table,
+                                       wsprockeystate_check_expiration, proc);
      }
 
      //free shared sh5 option struct
@@ -243,6 +298,10 @@ proc_process_t wsprockeystate_input_set(void * vinstance, wsdatatype_t * input_t
           return NULL;  // not matching expected type
      }
 
+     if (wslabel_match(type_table, port, "EXPIRE")) {
+          proc->expire_generation = 1;
+          return wsprockeystate_expire_port;
+     }
      if (wslabel_match(type_table, port, "REMOVE") ||
          wslabel_match(type_table, port, "DELETE")) {
           return wsprockeystate_delete_key; // a function pointer
@@ -253,6 +312,31 @@ proc_process_t wsprockeystate_input_set(void * vinstance, wsdatatype_t * input_t
      }
      else {
           return wsprockeystate_process_key; // a function pointer
+     }
+}
+
+
+static inline void wspks_update_generation(wsprockeystate_inst_t * proc,
+                                           void * vstate) {
+     if (!proc->expire_generation || !vstate) {
+          return;
+     }
+
+     uint32_t * pgeneration = wsprockeystate_get_generation_ptr(proc, vstate);
+     if (pgeneration) {
+          *pgeneration = proc->expire_generation;
+     }
+}
+
+static inline void wspks_check_expire_loop(wsprockeystate_inst_t * proc) {
+     if (proc->loop_started) {
+          dprint("loop_started- check expire_loop");
+          stringhash5_walker_next(proc->expire_walker);
+
+          if (proc->expire_walker->loop == proc->loop_target) {
+               dprint("loop ended");
+               proc->loop_started = 0;
+          }
      }
 }
 
@@ -284,6 +368,7 @@ static int wsprockeystate_process_key(void * vinstance, wsdata_t* input_data,
                if (sdata) {
                     found = 1;
                }
+               wspks_update_generation(proc, sdata);
                rtn += proc->kid->update_func(proc->kproc, sdata, input_data, mset[j]);
                if (proc->kid->force_expire_func && proc->kid->expire_func) {
                     if (proc->kid->force_expire_func(proc->kproc, sdata,
@@ -298,6 +383,8 @@ static int wsprockeystate_process_key(void * vinstance, wsdata_t* input_data,
           }
      }
     
+     wspks_check_expire_loop(proc);
+
      if (rtn) { 
           ws_set_outdata(input_data, proc->outtype_tuple, dout);
      }
@@ -335,6 +422,8 @@ static int wsprockeystate_process_keyvalue(void * vinstance, wsdata_t* input_dat
           found = 1;
      }
 
+     wspks_update_generation(proc, sdata);
+
      if (tuple_find_label(input_data, proc->label_value,
                           &mset_len, &mset)) {
           for (j = 0; j < mset_len; j++ ) {
@@ -353,11 +442,49 @@ static int wsprockeystate_process_keyvalue(void * vinstance, wsdata_t* input_dat
      }
      if (found) {
           stringhash5_unlock(proc->state_table);
+
      }
+     wspks_check_expire_loop(proc);
     
      if (rtn) { 
           ws_set_outdata(input_data, proc->outtype_tuple, dout);
      }
+
+     return 1;
+}
+
+//triggered when any tuple is set ot the expire port
+static int wsprockeystate_expire_port(void * vinstance, wsdata_t* input_data,
+                                      ws_doutput_t * dout, int type_index) {
+     wsprockeystate_inst_t * proc = (wsprockeystate_inst_t*)vinstance;
+     dprint("%s expire port called", proc->kid->name);
+     if (!proc->kid->gradual_expire) {
+          if (proc->kid->expire_func) {
+               stringhash5_scour_and_flush(proc->state_table, wsprockeystate_expire, proc);
+          }
+          else {
+               stringhash5_flush(proc->state_table);
+          }
+          return 1;
+     }
+
+     //Do gradulal flush
+     if (proc->loop_started) {
+          dprint("%s expire already started", proc->kid->name);
+          return 1;
+     }
+
+     proc->dout = dout;
+     proc->loop_started = 1;
+     proc->loop_target = proc->expire_walker->loop + 1;
+     proc->loop_generation = proc->expire_generation;
+     wspks_check_expire_loop(proc);
+
+     proc->expire_generation++;
+     if (proc->expire_generation == 0) {
+          proc->expire_generation = 1;
+     }
+     dprint("%s expire generation %d", proc->kid->name, proc->expire_generation);
 
      return 1;
 }

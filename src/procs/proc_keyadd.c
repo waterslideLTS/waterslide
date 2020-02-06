@@ -36,6 +36,7 @@ SOFTWARE.
 #include "procloader_keystate.h"
 
 int is_prockeystate = 1;
+int prockeystate_gradual_expire = 1;
 
 char proc_version[]     = "1.5";
 char *proc_menus[] = { "Count", NULL };
