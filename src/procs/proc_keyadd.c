@@ -82,7 +82,12 @@ char proc_nonswitch_opts[]    = "LABEL of key to count";
 char *proc_input_types[]    = {"tuple", NULL};
 char *proc_output_types[]    = {"tuple", NULL};
 char *proc_tuple_member_labels[] = {"COUNT", NULL};
-proc_port_t proc_input_ports[] = {{NULL, NULL}};
+proc_port_t proc_input_ports[] =  {
+     {"none","normal operation"},
+     {"EXPIRE","trigger gradual expiration of buffered states"},
+     {NULL, NULL}
+};
+
 char *proc_tuple_conditional_container_labels[] = {NULL};
 
 typedef struct _key_data_t {
