@@ -65,6 +65,7 @@ typedef struct _wsprockeystate_kid_t {
      char * name;
      char * option_str;
      proc_labeloffset_t * labeloffset;
+     int gradual_expire;
 } wsprockeystate_kid_t;
 
 int wsprockeystate_init(int, char *const*, void **, void *, wsprockeystate_kid_t *);

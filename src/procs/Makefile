@@ -175,6 +175,18 @@ proc_workreceive$(WS_SFX): proc_workreceive.c
 	@echo " not building $@, only built for WS_PARALLEL=1"
 endif
 
+ifdef DEPRECATED
+proc_print2json$(WS_SFX): proc_print2json.c
+	$(SHOWFILE) 
+	$(CC) $(CFLAGS) $< -o $@ $(LDFLAGS)
+	$(INSTALL) $@ $(WS_PROCS_DIR)
+else
+proc_print2json$(WS_SFX): proc_print2json.c
+	@echo " not building $@, deprecated process, set DEPRECATED=1 to build"
+endif
+
+
+
 #********
 #*****
 #********

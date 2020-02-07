@@ -36,6 +36,7 @@ SOFTWARE.
 #include "procloader_keystate.h"
 
 int is_prockeystate = 1;
+int prockeystate_gradual_expire = 1;
 
 char proc_version[]     = "1.5";
 char *proc_menus[] = { "Count", NULL };
@@ -81,7 +82,12 @@ char proc_nonswitch_opts[]    = "LABEL of key to count";
 char *proc_input_types[]    = {"tuple", NULL};
 char *proc_output_types[]    = {"tuple", NULL};
 char *proc_tuple_member_labels[] = {"COUNT", NULL};
-proc_port_t proc_input_ports[] = {{NULL, NULL}};
+proc_port_t proc_input_ports[] =  {
+     {"none","normal operation"},
+     {"EXPIRE","trigger gradual expiration of buffered states"},
+     {NULL, NULL}
+};
+
 char *proc_tuple_conditional_container_labels[] = {NULL};
 
 typedef struct _key_data_t {
@@ -133,7 +139,7 @@ static inline void add_scores(proc_instance_t *proc,
                               wsdata_t * tup, key_data_t * kd, 
                               ws_doutput_t * dout,
                               ws_outtype_t * outtype_tuple) {
-     tuple_member_create_uint(tup, kd->cnt, proc->label_cnt);
+     tuple_member_create_uint64(tup, kd->cnt, proc->label_cnt);
      if (proc->do_pct) {
           tuple_member_create_double(tup,
                                      (double)kd->cnt/(double)proc->totalcnt,
