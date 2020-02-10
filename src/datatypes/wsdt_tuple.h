@@ -505,6 +505,8 @@ static inline wsdata_t * tuple_member_create_int(wsdata_t * tuple,
      return data;
 }
 
+#define tuple_member_create_int32 tuple_member_create_int
+
 static inline wsdata_t * tuple_member_create_int_mlabel(wsdata_t * tuple,
                                                         wsdt_int_t u,
                                                         wslabel_t * label,
@@ -545,6 +547,19 @@ static inline wsdata_t * tuple_member_create_uint64(wsdata_t * tuple,
      *ou = u;
      return data;
 }
+
+static inline wsdata_t * tuple_member_create_int64(wsdata_t * tuple,
+                                                    wsdt_int64_t u,
+                                                    wslabel_t * label) {
+     wsdata_t * data = tuple_member_create_wsdata(tuple, dtype_int64, label);
+     if (!data) {
+          return NULL;
+     }
+     wsdt_int64_t * ou = (wsdt_int64_t*)data->data;
+     *ou = u;
+     return data;
+}
+
 
 static inline wsdata_t * tuple_member_create_uint16(wsdata_t * tuple,
                                                     wsdt_uint16_t u,

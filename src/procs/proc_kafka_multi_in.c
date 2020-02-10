@@ -79,6 +79,8 @@ proc_option_t proc_opts[] = {
      "detect if buffer is ascii strings",0,0},
      {'X',"","key=value",
      "set kafka config option",0,0},
+     {'V',"","",
+     "send logs in output tagged with LOG label",0,0},
      //the following must be left as-is to signify the end of the array
      {' ',"","",
      "",0,0}
@@ -101,13 +103,23 @@ typedef struct _proc_instance_t {
      char * topic;
      char group_default[GRP_MAX];
      char * group;
+     wslabel_t * label_data;
+     wslabel_t * label_log;
      wslabel_t * label_buf;
-     wslabel_t * label_tuple;
+     wslabel_t * label_kafka;
      wslabel_t * label_topic;
      wslabel_t * label_partition;
      wslabel_t * label_datetime;
      wslabel_t * label_outcnt;
      wslabel_t * label_outlen;
+     wslabel_t * label_msg;
+     wslabel_t * label_mode;
+     wslabel_t * label_err;
+     wslabel_t * label_reason;
+     wslabel_t * label_throttle_ms;
+     wslabel_t * label_broker;
+     wslabel_t * label_broker_id;
+     wslabel_t * label_offset;
 
      rd_kafka_t *rk;
 	rd_kafka_conf_t *conf;
@@ -117,6 +129,7 @@ typedef struct _proc_instance_t {
      ws_doutput_t * dout;
 
      int stringdetect;
+     int tuple_logs;
 } proc_instance_t;
 
 
@@ -154,8 +167,12 @@ static int proc_cmd_options(int argc, char ** argv,
 
      int op;
 
-     while ((op = getopt(argc, argv, "X:g:Sb:p:L:")) != EOF) {
+     while ((op = getopt(argc, argv, "vVX:g:Sb:p:L:")) != EOF) {
           switch (op) {
+          case 'v':
+          case 'V':
+               proc->tuple_logs = 1;
+               break;
           case 'g':
                proc->group = optarg;
                break;
@@ -211,6 +228,89 @@ static int proc_cmd_options(int argc, char ** argv,
      return 1;
 }
 
+static wsdata_t * allocate_log_tuple(proc_instance_t * proc) {
+     wsdata_t * tuple = wsdata_alloc(dtype_tuple);
+
+     if (!tuple) {
+          return NULL;
+     }
+
+     wsdata_add_label(tuple, proc->label_kafka);
+     wsdata_add_label(tuple, proc->label_log);
+
+     struct timeval current;
+     gettimeofday(&current, NULL);
+
+     wsdt_ts_t ts;
+     ts.sec = current.tv_sec;
+     ts.usec = current.tv_usec;
+
+     tuple_member_create_ts(tuple, ts, proc->label_datetime);
+
+     return tuple;
+}
+
+static void rebalance_cb_tuple(rd_kafka_t *rk,
+                               rd_kafka_resp_err_t err,
+                               rd_kafka_topic_partition_list_t *partitions,
+                               void *opaque) {
+     proc_instance_t * proc = (proc_instance_t*)opaque;
+
+     if (!proc || !proc->dout) {
+          return;
+     }
+
+     wsdata_t * tuple = allocate_log_tuple(proc);
+     if (!tuple) {
+          return;
+     }
+
+     char * msg = "Consumer group rebalanced";
+     tuple_dupe_string(tuple, proc->label_msg, msg, strlen(msg));
+
+     const char * mode;
+
+     switch (err) {
+     case RD_KAFKA_RESP_ERR__ASSIGN_PARTITIONS:
+          mode = "assign";
+          rd_kafka_assign(proc->rk, partitions);
+          break;
+     case RD_KAFKA_RESP_ERR__REVOKE_PARTITIONS:
+          mode = "revoke";
+          rd_kafka_assign(proc->rk, NULL);
+          break;
+     default:
+          mode = rd_kafka_err2str(err);
+          rd_kafka_assign(proc->rk, NULL);
+     }
+     if (mode && strlen(mode)) {
+          tuple_dupe_string(tuple, proc->label_mode, mode, strlen(mode));
+     }
+
+     if (partitions)  {
+          int i;
+          for (i = 0 ; i < partitions->cnt ; i++) {
+               wsdata_t * sub = tuple_member_create_wsdata(tuple, dtype_tuple,
+                                                           proc->label_partition);
+               if (sub) {
+                    char * topic = partitions->elems[i].topic;
+                    if (topic && strlen(topic)) {
+                         tuple_dupe_string(sub, proc->label_topic,
+                                           topic, strlen(topic));
+                    }
+                    tuple_member_create_int32(sub,
+                                            partitions->elems[i].partition,
+                                            proc->label_partition);
+                    tuple_member_create_int64(sub,
+                                            partitions->elems[i].offset,
+                                            proc->label_offset);
+               }
+          }
+     }
+     //output tuple
+     ws_set_outdata(tuple, proc->outtype_tuple, proc->dout);
+}
+
 static void print_partition_list (FILE *fp,
                                   const rd_kafka_topic_partition_list_t
                                   *partitions) {
@@ -231,7 +331,12 @@ static void rebalance_cb (rd_kafka_t *rk,
                           rd_kafka_resp_err_t err,
                           rd_kafka_topic_partition_list_t *partitions,
                           void *opaque) {
+
      proc_instance_t * proc = (proc_instance_t*)opaque;
+     if (proc && proc->tuple_logs && proc->dout) {
+          rebalance_cb_tuple(rk, err, partitions, opaque);
+          return;
+     }
      tool_print("%% Consumer group rebalanced: ");
 
      switch (err) {
@@ -254,14 +359,124 @@ static void rebalance_cb (rd_kafka_t *rk,
      }
 }
 
+static void err_cb_tuple(rd_kafka_t *rk, int err, const char *reason, void *opaque) {
+     proc_instance_t * proc = (proc_instance_t*)opaque;
+
+     if (!proc || !proc->dout) {
+          return;
+     }
+
+     wsdata_t * tuple = allocate_log_tuple(proc);
+     if (!tuple) {
+          return;
+     }
+
+     const char * msg = rd_kafka_name(rk);
+     if (msg && strlen(msg)) {
+          tuple_dupe_string(tuple, proc->label_msg, msg, strlen(msg));
+     }
+     const char * errstr = rd_kafka_err2str(err);
+     if (errstr && strlen(errstr)) {
+          tuple_dupe_string(tuple, proc->label_err, errstr, strlen(errstr));
+     }
+     if (reason && strlen(reason)) {
+          tuple_dupe_string(tuple, proc->label_reason, reason, strlen(reason));
+     }
+
+     ws_set_outdata(tuple, proc->outtype_tuple, proc->dout);
+}
+
+
+int log_cb_tuple(proc_instance_t * proc, const rd_kafka_t *rk, int level,
+                  const char *fac, const char *buf) {
+
+     wsdata_t * tuple = allocate_log_tuple(proc);
+     if (!tuple) {
+          return 0;
+     }
+
+     tuple_member_create_int32(tuple,
+                               level,
+                               proc->label_mode);
+     if (fac && strlen(fac)) {
+          tuple_dupe_string(tuple, proc->label_err, fac, strlen(fac));
+     }
+     const char * name = rd_kafka_name(rk);
+     if (name && strlen(name)) {
+          tuple_dupe_string(tuple, proc->label_msg, name, strlen(name));
+     }
+     if (buf && strlen(buf)) {
+          tuple_dupe_string(tuple, proc->label_reason, buf, strlen(buf));
+     }
+     ws_set_outdata(tuple, proc->outtype_tuple, proc->dout);
+
+     return 1;
+}
+
+
+void log_cb(const rd_kafka_t *rk, int level,
+            const char *fac, const char *buf) {
+
+     if (rk) {
+          proc_instance_t * proc = (proc_instance_t*)rd_kafka_opaque(rk);
+          if (proc && proc->tuple_logs && proc->dout) {
+               if (log_cb_tuple(proc, rk, level, fac, buf)) {
+                    return;
+               }
+          }
+     }
+     
+     rd_kafka_log_print(rk, level, fac, buf);
+}
+
 static void err_cb (rd_kafka_t *rk, int err, const char *reason, void *opaque) {
+     proc_instance_t * proc = (proc_instance_t*)opaque;
+     if (proc && proc->tuple_logs && proc->dout) {
+          err_cb_tuple(rk, err, reason, opaque);
+          return;
+     }
 	fprintf(stderr, "%% ERROR CALLBACK: %s: %s: %s\n",
 	       rd_kafka_name(rk), rd_kafka_err2str(err), reason);
 }
 
+static void throttle_cb_tuple (rd_kafka_t *rk, const char *broker_name,
+                               int32_t broker_id, int throttle_time_ms,
+                               void *opaque) {
+     proc_instance_t * proc = (proc_instance_t*)opaque;
+
+     wsdata_t * tuple = allocate_log_tuple(proc);
+     if (!tuple) {
+          return;
+     }
+
+
+     char * msg = "Throttled";
+     tuple_dupe_string(tuple, proc->label_msg, msg, strlen(msg));
+
+     tuple_member_create_int(tuple,
+                             throttle_time_ms,
+                             proc->label_throttle_ms);
+
+     if (broker_name && strlen(broker_name)) {
+          tuple_dupe_string(tuple, proc->label_broker, broker_name,
+                            strlen(broker_name));
+     }
+
+     tuple_member_create_int32(tuple,
+                               broker_id,
+                               proc->label_broker_id);
+
+     ws_set_outdata(tuple, proc->outtype_tuple, proc->dout);
+}
+
 static void throttle_cb (rd_kafka_t *rk, const char *broker_name,
-			 int32_t broker_id, int throttle_time_ms,
-			 void *opaque) {
+                         int32_t broker_id, int throttle_time_ms,
+                         void *opaque) {
+     proc_instance_t * proc = (proc_instance_t*)opaque;
+     if (proc && proc->tuple_logs && proc->dout) {
+          throttle_cb_tuple(rk, broker_name, broker_id, throttle_time_ms, opaque);
+          return;
+     }
 	fprintf(stderr, "%% THROTTLED %dms by %s (%"PRId32")\n", throttle_time_ms,
 	       broker_name, broker_id);
 }
@@ -280,19 +495,32 @@ int proc_init(wskid_t * kid, int argc, char ** argv, void ** vinstance, ws_sourc
      *vinstance = proc;
 
      proc->label_buf = wsregister_label(type_table, "BUF");
-     proc->label_tuple = wsregister_label(type_table, "KAFKA");
+     proc->label_kafka = wsregister_label(type_table, "KAFKA");
      proc->label_topic = wsregister_label(type_table, "TOPIC");
      proc->label_partition = wsregister_label(type_table, "PARTITION");
      proc->label_datetime = wsregister_label(type_table, "DATETIME");
      proc->label_outcnt = wsregister_label(type_table, "KAFKA_IN_COUNT");
      proc->label_outlen = wsregister_label(type_table, "KAFKA_IN_OUTBYTES");
+     proc->label_log = wsregister_label(type_table, "LOG");
+     proc->label_data = wsregister_label(type_table, "DATA");
+     proc->label_msg = wsregister_label(type_table, "MSG");
+     proc->label_err = wsregister_label(type_table, "ERR");
+     proc->label_mode = wsregister_label(type_table, "MODE");
+     proc->label_reason = wsregister_label(type_table, "REASON");
+     proc->label_throttle_ms = wsregister_label(type_table, "THROTTLE_MSEC");
+     proc->label_broker = wsregister_label(type_table, "BROKER");
+     proc->label_broker_id = wsregister_label(type_table, "BROKER_ID");
+     proc->label_offset = wsregister_label(type_table, "OFFSET");
 
      snprintf(proc->group_default,GRP_MAX,"%s:%d", PROC_NAME, rand());
      proc->group = proc->group_default;
 
      proc->conf = rd_kafka_conf_new();
+     rd_kafka_conf_set_opaque(proc->conf, (void*)proc);
 	rd_kafka_conf_set_error_cb(proc->conf, err_cb);
 	rd_kafka_conf_set_throttle_cb(proc->conf, throttle_cb);
+     rd_kafka_conf_set_rebalance_cb(proc->conf, rebalance_cb);
+	rd_kafka_conf_set_log_cb(proc->conf, log_cb);
 
      /* Kafka topic configuration */
 	proc->topic_conf = rd_kafka_topic_conf_new();
@@ -316,8 +544,6 @@ int proc_init(wskid_t * kid, int argc, char ** argv, void ** vinstance, ws_sourc
           fprintf(stderr, "%% %s\n", proc->errstr);
           exit(1);
      }
-     rd_kafka_conf_set_opaque(proc->conf, (void*)proc);
-     rd_kafka_conf_set_rebalance_cb(proc->conf, rebalance_cb);
      if (!(proc->rk = rd_kafka_new(RD_KAFKA_CONSUMER, proc->conf,
                              proc->errstr, sizeof(proc->errstr)))) {
           fprintf(stderr,
@@ -383,6 +609,59 @@ proc_process_t proc_input_set(void * vinstance, wsdatatype_t * input_type,
      return NULL;
 }
 
+static int consume_error_tuple(proc_instance_t * proc,
+                                rd_kafka_message_t * rkmessage) {
+     wsdata_t * tuple = allocate_log_tuple(proc);
+     if (!tuple) {
+          return 0;
+     }
+
+     char * msg = "Consume error for topic";
+
+     tuple_dupe_string(tuple, proc->label_msg, msg,
+                            strlen(msg));
+
+     if (rkmessage->rkt) {
+          const char * topic = rd_kafka_topic_name(rkmessage->rkt);
+          if (topic && strlen(topic)) {
+               tuple_dupe_string(tuple, proc->label_topic, topic,
+                                 strlen(topic));
+          }
+     }
+     tuple_member_create_int32(tuple,
+                               rkmessage->partition,
+                               proc->label_partition);
+     tuple_member_create_int64(tuple,
+                               rkmessage->offset,
+                               proc->label_offset);
+
+     const char * err = rd_kafka_message_errstr(rkmessage);
+     if (err && strlen(err)) {
+          tuple_dupe_string(tuple, proc->label_err, err,
+                            strlen(err));
+     }
+
+     ws_set_outdata(tuple, proc->outtype_tuple, proc->dout);
+     return 1;
+
+}
+static void consume_error_print(proc_instance_t * proc,
+                                rd_kafka_message_t * rkmessage) {
+
+     if (proc && proc->tuple_logs && proc->dout) {
+          if (consume_error_tuple(proc, rkmessage)) {
+               return;
+          }
+     }
+     
+	fprintf(stderr,"%% Consume error for topic \"%s\" [%"PRId32"] "
+		       "offset %"PRId64": %s\n",
+		       rkmessage->rkt ? rd_kafka_topic_name(rkmessage->rkt):"",
+		       rkmessage->partition,
+		       rkmessage->offset,
+		       rd_kafka_message_errstr(rkmessage));
+}
+
 //callback per kafka message
 static void msg_consume (rd_kafka_message_t *rkmessage, void *vproc) {
      proc_instance_t * proc = (proc_instance_t*)vproc;
@@ -396,12 +675,7 @@ static void msg_consume (rd_kafka_message_t *rkmessage, void *vproc) {
                return;
           }
 
-		fprintf(stderr,"%% Consume error for topic \"%s\" [%"PRId32"] "
-		       "offset %"PRId64": %s\n",
-		       rkmessage->rkt ? rd_kafka_topic_name(rkmessage->rkt):"",
-		       rkmessage->partition,
-		       rkmessage->offset,
-		       rd_kafka_message_errstr(rkmessage));
+          consume_error_print(proc, rkmessage);
 
 
                 /*
@@ -418,6 +692,8 @@ static void msg_consume (rd_kafka_message_t *rkmessage, void *vproc) {
           if (!tuple) {
                return;
           }
+          wsdata_add_label(tuple, proc->label_kafka);
+          wsdata_add_label(tuple, proc->label_data);
           const char * topic = rd_kafka_topic_name(rkmessage->rkt);
           if (topic) {
                tuple_dupe_string(tuple, proc->label_topic, topic,
@@ -502,6 +778,11 @@ int proc_destroy(void * vinstance) {
      proc_instance_t * proc = (proc_instance_t*)vinstance;
      tool_print("polling loop cnt %" PRIu64, proc->meta_process_cnt);
      tool_print("output cnt %" PRIu64, proc->outcnt);
+
+
+     //turn off logging to tuples
+     proc->tuple_logs = 0;
+     proc->dout = NULL;
 
      if (proc->rk) {
           rd_kafka_resp_err_t err;
