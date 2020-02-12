@@ -164,7 +164,7 @@ static wsdata_t * wsdt_string_subelement_ts(wsdata_t *ndata,
      wsdt_string_t * bin = (wsdt_string_t *)ndata->data;
      wsdt_ts_t * ts = (wsdt_ts_t*)dst->data;
      if ((timeparse_detect_date(bin->buf, bin->len) != 2) ||
-         (bin->len > 31)) {
+         ((size_t)bin->len > 31)) {
           wsdata_delete(dst);
           return NULL;          
      }
@@ -174,9 +174,9 @@ static wsdata_t * wsdt_string_subelement_ts(wsdata_t *ndata,
      memcpy(buf, bin->buf, bin->len);
      buf[bin->len] = 0;
 
-     if (len > 19) {
+     if ((size_t)len > 19) {
           buf[19] = '\0';
-          if (len > 20) {
+          if ((size_t)len > 20) {
                char * ustr = buf + 20;
                ts->usec = atoi(ustr);
           }
