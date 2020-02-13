@@ -175,14 +175,14 @@ int datatype_file_filter(const struct dirent * entry) {
      return 0;
 }
 
-
+#define MAX_SPATH (5000)
 int load_proc_dir(const char * dirname) {
 
      struct dirent **namelist;
      int rtn = 0;
 
      int n;
-     char spath[5000];
+     char spath[MAX_SPATH];
 
      if (dirname == NULL) {
           fprintf(stderr,"no datatype path.. set environment");
@@ -192,7 +192,7 @@ int load_proc_dir(const char * dirname) {
 
      n = scandir(dirname, &namelist, datatype_file_filter, alphasort);
 
-     if (n < 0) {
+     if ((n < 0) || (dirlen > MAX_SPATH)) {
           perror("scandir");
      }
      else {
