@@ -1353,7 +1353,7 @@ int load_proc_dir_term(const char * dirname, char * term) {
                last_kid = kid;
 
                namelen = strlen(namelist[i]->d_name);
-               if ((namelen + dirlen + 1) > MAX_SPATH) {
+               if ((namelen + dirlen + 2) > MAX_SPATH) {
                     return 0;
                }
                memcpy(spath + dirlen + 1, namelist[i]->d_name, namelen);
@@ -1451,7 +1451,7 @@ int load_proc_dir(const char * dirname) {
                last_kid = kid;
 
                namelen = strlen(namelist[i]->d_name);
-               if ((namelen + dirlen + 1) > MAX_SPATH) {
+               if ((namelen + dirlen + 2) > MAX_SPATH) {
                     return 0;
                }
                memcpy(spath + dirlen + 1, namelist[i]->d_name, namelen);

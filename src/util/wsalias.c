@@ -202,7 +202,7 @@ int load_proc_dir(const char * dirname) {
           int i;
           for (i = 0; i < n; i++) {
                namelen = strlen(namelist[i]->d_name);
-               if ((namelen + dirlen + 1) > MAX_SPATH) {
+               if ((namelen + dirlen + 2) > MAX_SPATH) {
                     return 0;
                }
                memcpy(spath + dirlen + 1, namelist[i]->d_name, namelen);
