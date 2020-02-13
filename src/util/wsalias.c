@@ -192,7 +192,7 @@ int load_proc_dir(const char * dirname) {
 
      n = scandir(dirname, &namelist, datatype_file_filter, alphasort);
 
-     if ((n < 0) || (dirlen > MAX_SPATH)) {
+     if ((n < 0) || ((dirlen + 1) > MAX_SPATH)) {
           perror("scandir");
      }
      else {
@@ -202,6 +202,9 @@ int load_proc_dir(const char * dirname) {
           int i;
           for (i = 0; i < n; i++) {
                namelen = strlen(namelist[i]->d_name);
+               if ((namelen + dirlen + 1) > MAX_SPATH) {
+                    return 0;
+               }
                memcpy(spath + dirlen + 1, namelist[i]->d_name, namelen);
                spath[dirlen+namelen + 1] = '\0';
                
