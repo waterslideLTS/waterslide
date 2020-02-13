@@ -154,8 +154,10 @@ sanitize_path(char *instr)
      return instr;
 }
 
-char *
-makestring(char *start, char *end) {
+char * makestring(char *start, char *end) {
+     if (end < start) {
+          return NULL;
+     }
      int len = end-start;
      char *result = calloc(1,len+1);
      return memcpy(result, start, len);
@@ -189,18 +191,21 @@ expand_env_vars(char *inputstr, int only_env) {
 	       }
 	       
 	       envname = makestring(ptr+1, endptr);
+            if (!envname) {
+                 return NULL;
+            }
 	       envval = getenv(envname);
 	       if (envval) {
-		    strcat(result,envval);
+		    strncat(result,envval,MAX_NAME_LEN - strlen(result) - 1);
 		    resultptr += strlen(envval);
 	       } else {
 		    if (!usernotified) {
 			 tool_print("Note: environment variable %s not set; using {%s} as placeholder", envname, envname);
 			 usernotified = 1; // don't flood the user
 		    }
-		    strcat(result,"{");
-		    strcat(result,envname);
-		    strcat(result,"}");
+		    strncat(result,"{", MAX_NAME_LEN - strlen(result) - 1);
+		    strncat(result,envname, MAX_NAME_LEN - strlen(result) - 1);
+		    strncat(result,"}",MAX_NAME_LEN - strlen(result) - 1);
 		    resultptr += strlen(envname) + 2;
 	       }
 	       ptr = endptr + 1;
@@ -272,16 +277,16 @@ fileout_parse_filespec(char *inputstr, filespec_t *fs, int only_env) {
 	       envname = makestring(ptr+1, endptr);
 	       envval = getenv(envname);
 	       if (envval) {
-		    strcat(result,envval);
+		    strncat(result, envval, MAX_NAME_LEN - strlen(result) - 1);
 		    resultptr += strlen(envval);
 	       } else {
 		    if (!usernotified) {
 			 tool_print("Note: environment variable %s not set; using {%s} as placeholder", envname, envname);
 			 usernotified = 1; // Don't flood the user
 		    }
-		    strcat(result,"{");
-		    strcat(result,envname);
-		    strcat(result,"}");
+		    strncat(result,"{", MAX_NAME_LEN - strlen(result) - 1);
+		    strncat(result,envname, MAX_NAME_LEN - strlen(result) - 1);
+		    strncat(result,"}", MAX_NAME_LEN - strlen(result) - 1);
 		    resultptr += strlen(envname) + 2;
 	       }
 	       ptr = endptr + 1;
@@ -372,30 +377,30 @@ make_basename(filespec_t *fs, wsdata_t *input, time_t basetime)
   	       if (input && tuple_find_label(input, fs->label, &mset_len, &mset)) {
 		    if (mset[0]->dtype->to_string(mset[0], &string, &len_str)) {
 			 string[len_str] = '\0'; 
-			 strcat(result, sanitize(string));
+			 strncat(result, sanitize(string), MAX_NAME_LEN - strlen(result) - 1);
 			 break;
 		    } 		    
 	       }
 	       // If label not found or it's not printable
-	       strcat(result, "[");
-	       strcat(result, fs->labelname);
-	       strcat(result, "]");
+	       strncat(result, "[", MAX_NAME_LEN - strlen(result) - 1);
+	       strncat(result, fs->labelname, MAX_NAME_LEN - strlen(result) - 1);
+	       strncat(result, "]", MAX_NAME_LEN - strlen(result) - 1);
 	       break;
 
 	  case '<': // process time
 	       if (!basetime) { 
 		    // placeholder; perhaps not needed
-		    strcat(result, "timestamp");
+		    strncat(result, "timestamp", MAX_NAME_LEN - strlen(result) - 1);
 	       } else {
 		    char tmptm[300];
 		    strftime(tmptm, 300, &fs->namepiece[i][1], gmtime(&basetime));
-		    strcat(result, tmptm);
+		    strncat(result, tmptm, MAX_NAME_LEN - strlen(result) - 1);
 		    break;
 	       }
 	       break;
 	
 	  default:
-	       strcat(result, fs->namepiece[i]);
+	       strncat(result, fs->namepiece[i], MAX_NAME_LEN - strlen(result) - 1);
 	       break;
 	  }
      }
@@ -452,7 +457,7 @@ open_file(fpdata_t *fpd, filespec_t *fs)
      int namelen;
      int tempfd=0;
 	      
-     strcpy(realname, fpd->filename);
+     strncpy(realname, fpd->filename, MAX_NAME_LEN);
      if (fpd->rollovercount != 0) {
 	  sprintf(realname+strlen(realname), "_pt%03u",fpd->rollovercount);
      }
@@ -498,7 +503,7 @@ open_file(fpdata_t *fpd, filespec_t *fs)
 
      // transform to FILE* equivalent
      if (fs->use_gzip) {	  
-	  strcat(mode, "b9");
+	  strncat(mode, "b9", 5 - strlen(mode) - 1);
 	  fpd->fp = gzdopen(tempfd, mode);
      } else {
 	  fpd->fp = fdopen(tempfd, mode);
@@ -560,7 +565,7 @@ close_fp(fpdata_t *fpd, filespec_t *fs, int eviction) {
 	  sprintf(finalname,"%s%s", fs->moveprefix,fpd->expandedname);
 	  namelen = strlen(finalname);
 	  if (fs->extension) {
-	       strcat(finalname, fs->extension);
+	       strncat(finalname, fs->extension, MAX_NAME_LEN - strlen(finalname) - 1);
 	  }
 
 	  if (!make_path(finalname)) {
@@ -572,7 +577,9 @@ close_fp(fpdata_t *fpd, filespec_t *fs, int eviction) {
 		    // dest file already exists
 			 do {
 			      sprintf(finalname+namelen,"_x%03u",++copyversion);
-			      if (fs->extension) { strcat(finalname, fs->extension); }
+			      if (fs->extension) {
+                          strncat(finalname, fs->extension, MAX_NAME_LEN - strlen(finalname) - 1);
+                     }
 			 } while ((link(currentname, finalname) == -1 && (errno == EEXIST)) 
 				  && copyversion < MAX_FILE_VERSIONS);
 			 if (copyversion >= MAX_FILE_VERSIONS) {
