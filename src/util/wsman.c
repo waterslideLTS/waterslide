@@ -1314,12 +1314,13 @@ int datatype_file_filter(const struct dirent * entry) {
      return 0;
 }
 
+#define MAX_SPATH (5000)
 int load_proc_dir_term(const char * dirname, char * term) {
      struct dirent **namelist;
      int rtn = 0;
 
      int n;
-     char spath[5000];
+     char spath[MAX_SPATH];
 
      if (dirname == NULL) {
           fprintf(stderr,"no datatype path.. set environment");
@@ -1329,7 +1330,7 @@ int load_proc_dir_term(const char * dirname, char * term) {
 
      n = scandir(dirname, &namelist, datatype_file_filter, alphasort);
 
-     if (n < 0) {
+     if ((n < 0) || ((dirlen + 1) > MAX_SPATH))  {
           perror("scandir");
      } else {
           memcpy(spath, dirname, dirlen);
@@ -1352,6 +1353,9 @@ int load_proc_dir_term(const char * dirname, char * term) {
                last_kid = kid;
 
                namelen = strlen(namelist[i]->d_name);
+               if ((namelen + dirlen + 2) > MAX_SPATH) {
+                    return 0;
+               }
                memcpy(spath + dirlen + 1, namelist[i]->d_name, namelen);
                spath[dirlen+namelen + 1] = '\0';
 
@@ -1416,7 +1420,7 @@ int load_proc_dir(const char * dirname) {
      int rtn = 0;
 
      int n;
-     char spath[5000];
+     char spath[MAX_SPATH];
 
      if (dirname == NULL) {
           fprintf(stderr,"no datatype path.. set environment");
@@ -1426,7 +1430,7 @@ int load_proc_dir(const char * dirname) {
 
      n = scandir(dirname, &namelist, datatype_file_filter, alphasort);
 
-     if (n < 0) {
+     if ((n < 0) || ((dirlen + 1) > MAX_SPATH)) {
           perror("scandir");
      } else {
           memcpy(spath, dirname, dirlen);
@@ -1447,6 +1451,9 @@ int load_proc_dir(const char * dirname) {
                last_kid = kid;
 
                namelen = strlen(namelist[i]->d_name);
+               if ((namelen + dirlen + 2) > MAX_SPATH) {
+                    return 0;
+               }
                memcpy(spath + dirlen + 1, namelist[i]->d_name, namelen);
                spath[dirlen+namelen + 1] = '\0';
                

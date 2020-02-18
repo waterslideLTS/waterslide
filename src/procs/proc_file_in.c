@@ -237,7 +237,7 @@ static inline void add_extra_metadata(proc_instance_t * proc, wsdata_t * tdata) 
      }
      int flen = strlen(proc->filename);
 
-     if (flen) {
+     if (flen > 0) {
           wsdt_string_t * str = tuple_create_string(tdata, proc->label_filename, flen);
           if (str) {
                memcpy(str->buf, proc->filename, flen);

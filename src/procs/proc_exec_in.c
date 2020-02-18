@@ -347,7 +347,7 @@ static int aggregate_output(proc_instance_t * proc,
                }
                cursor = next;
           }
-          if (len) {
+          if (len && ((len + offset) <= agglen)) {
                memcpy(agg_buf + offset, buf, len); 
           }
           dprint("offset %d", offset);
