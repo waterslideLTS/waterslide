@@ -60,19 +60,39 @@ typedef struct _wsprockeystate_inst_t {
      int loop_started;
      int loop_target;
      stringhash5_walker_t * expire_walker;
+
+     int multivalue;
+     wslabel_nested_set_ext_t nest_mvalue;
+     int mvalue_cnt;
+     wslabel_nested_set_t nest_key;
+     int core_len;
+     wsdata_t * current_key;
+     wsdata_t * current_tuple;
 } wsprockeystate_inst_t;
 
 //function prototypes for local functions
 static int wsprockeystate_process_key(void *, wsdata_t*, ws_doutput_t*, int);
 static int wsprockeystate_process_keyvalue(void *, wsdata_t*, ws_doutput_t*, int);
+static int wsprockeystate_process_multivalue(void *, wsdata_t*, ws_doutput_t*, int);
 static int wsprockeystate_delete_key(void *, wsdata_t*, ws_doutput_t*, int);
+static int wsprockeystate_mvdelete_key(void *, wsdata_t*, ws_doutput_t*, int);
 static int wsprockeystate_expire_port(void *, wsdata_t*, ws_doutput_t*, int);
 static int wsprockeystate_process_flush(void *, wsdata_t*, ws_doutput_t*, int);
 
 
 static void wsprockeystate_expire(void * vstate, void * vinstance) {
      wsprockeystate_inst_t * proc = (wsprockeystate_inst_t*)vinstance;
-     proc->kid->expire_func(proc->kproc, vstate, proc->dout, proc->outtype_tuple);
+     if (proc->multivalue) {
+          if (proc->kid->expire_multi_func) {
+               uint8_t * vptr = (uint8_t*)vstate + proc->core_len;
+               proc->kid->expire_multi_func(proc->kproc, vstate, proc->dout,
+                                            proc->outtype_tuple,
+                                            proc->mvalue_cnt, (void *)vptr);
+          }
+     }
+     else {
+          proc->kid->expire_func(proc->kproc, vstate, proc->dout, proc->outtype_tuple);
+     }
 }
 
 static int wsprockeystate_cmd_options(int argc, char * const * argv, 
@@ -86,7 +106,16 @@ static int wsprockeystate_cmd_options(int argc, char * const * argv,
                proc->sharelabel = strdup(optarg);
                break;
           case 'V':
-               proc->label_value = wssearch_label(type_table, optarg);
+               if (proc->multivalue) {
+                    wslabel_nested_search_build_ext(type_table,
+                                                    &proc->nest_mvalue,
+                                                    optarg, proc->mvalue_cnt);
+                    proc->mvalue_cnt++;
+                    tool_print("%s using value with label %s", proc->kid->name, optarg);
+               }
+               else {
+                    proc->label_value = wssearch_label(type_table, optarg);
+               }
                break;
           case 'M':
                proc->buflen = atoi(optarg);
@@ -100,10 +129,17 @@ static int wsprockeystate_cmd_options(int argc, char * const * argv,
           }
      }
      while (optind < argc) {
-          proc->label_key = wssearch_label(type_table, argv[optind]);
-          tool_print("%s using key with label %s",
-                     proc->kid->name, argv[optind]);
-          return 1;
+          if (!proc->multivalue) {
+               proc->label_key = wssearch_label(type_table, argv[optind]);
+               tool_print("%s using key with label %s",
+                          proc->kid->name, argv[optind]);
+               return 1;
+          }
+
+          //handle nested variant key
+          wslabel_nested_search_build(type_table, &proc->nest_key, argv[optind]);
+          tool_print("%s using key with label %s", proc->kid->name, argv[optind]);
+          optind++;
      }
      return 1;
 }
@@ -135,8 +171,9 @@ static int wsprockeystate_check_expiration(void * vstate, void * vproc) {
 
      if ((generation != proc->expire_generation) &&
          (generation != proc->loop_generation)) {
-          if (proc->kid->expire_func) {
-               proc->kid->expire_func(proc->kproc, vstate, proc->dout, proc->outtype_tuple);
+          dprint("expiring with generation %u", generation);
+          if (proc->kid->expire_func || proc->kid->expire_multi_func) {
+               wsprockeystate_expire(vstate, vproc);
           }
           return 0; //delete data
      }
@@ -159,6 +196,7 @@ int wsprockeystate_init(int argc, char * const * argv, void ** vinstance,
           error_print("wsprockeystate_init failed in calloc of proc");
           return 0;
      }
+     proc->multivalue = kid->multivalue;
 
      if (kid && kid->option_str) {
           int olen = strlen(kid->option_str);
@@ -195,25 +233,31 @@ int wsprockeystate_init(int argc, char * const * argv, void ** vinstance,
           return 0;
      }
 
-     if (!proc->label_key) {
+     if (!proc->label_key && !proc->nest_key.cnt) {
           tool_print("%s no key specified with label", proc->kid->name);
           return 0;
      }
 
-     if (!kid->state_len) {
+     if (!kid->state_len && !kid->value_size) {
           tool_print("%s no state specified", proc->kid->name);
           return 0;
      }
 
-     if (kid->update_value_func && !kid->update_func && !proc->label_value) {
+     if (!proc->multivalue &&
+         kid->update_value_func && !kid->update_func && !proc->label_value) {
           tool_print("%s no value specified with label", proc->kid->name);
           return 0;
      }
 
      if (kid->init_func) {
-         if (!kid->init_func(proc->kproc, type_table, proc->label_value ? 1 : 0)) {
-              return 0;
-         }
+          if (proc->multivalue) {
+               if (!kid->init_func(proc->kproc, type_table, proc->mvalue_cnt)) {
+                    return 0;
+               }
+          }
+          if (!kid->init_func(proc->kproc, type_table, (proc->label_value) ? 1 : 0)) {
+               return 0;
+          }
      }
 
      if (!proc->buflen) {
@@ -224,6 +268,12 @@ int wsprockeystate_init(int argc, char * const * argv, void ** vinstance,
      int state_len = kid->state_len;
      if (kid->gradual_expire) {
           state_len += sizeof(uint32_t); //add extra state to track expiration
+
+     }
+     proc->core_len = state_len;
+
+     if (proc->multivalue) {
+          state_len += kid->value_size * proc->mvalue_cnt; 
      }
 
      //calloc shared sh5 option struct
@@ -231,7 +281,7 @@ int wsprockeystate_init(int argc, char * const * argv, void ** vinstance,
      stringhash5_sh_opts_alloc(&sh5_sh_opts);
 
      if (proc->sharelabel) {
-          if (kid->expire_func) {
+          if (kid->expire_func || kid->expire_multi_func) {
 
                //set shared sh5 option fields
                sh5_sh_opts->sh_callback = wsprockeystate_expire;
@@ -255,7 +305,7 @@ int wsprockeystate_init(int argc, char * const * argv, void ** vinstance,
           if (!proc->state_table) {
                return 0;
           }
-          if (kid->expire_func) {
+          if (kid->expire_func || kid->expire_multi_func) {
                stringhash5_set_callback(proc->state_table, wsprockeystate_expire, proc);
           }
      }
@@ -304,9 +354,17 @@ proc_process_t wsprockeystate_input_set(void * vinstance, wsdatatype_t * input_t
      }
      if (wslabel_match(type_table, port, "REMOVE") ||
          wslabel_match(type_table, port, "DELETE")) {
-          return wsprockeystate_delete_key; // a function pointer
+          if (proc->multivalue) {
+               return wsprockeystate_mvdelete_key; // a function pointer
+          }
+          else {
+               return wsprockeystate_delete_key; // a function pointer
+          }
      }
 
+     if (proc->multivalue) {
+          return wsprockeystate_process_multivalue; // a function pointer
+     }
      if (proc->label_value) {
           return wsprockeystate_process_keyvalue; // a function pointer
      }
@@ -340,6 +398,107 @@ static inline void wspks_check_expire_loop(wsprockeystate_inst_t * proc) {
      }
 }
 
+//only select first key found as key to use
+static int wspks_nest_search_key(void * vproc, void * vkey,
+                           wsdata_t * tdata, wsdata_t * member) {
+     dprint("nest_search_key");
+     //wsprockeystate_inst_t * proc = (wsprockeystate_inst_t*)vproc;
+     wsdata_t ** pkey = (wsdata_t **)vkey;
+     wsdata_t * key = *pkey;
+     if (!key) {
+          *pkey = member;
+          return 1;
+     }
+     return 0;
+}
+
+static int wspks_nest_search_value(void * vproc, void * vbase,
+                                   wsdata_t * tdata, wsdata_t * member,
+                                   wslabel_t * label, int offset) {
+
+     wsprockeystate_inst_t * proc = (wsprockeystate_inst_t*)vproc;
+
+     if (offset >= proc->mvalue_cnt) {
+          return 0; //invalid offset
+     }
+     uint8_t * vptr = (uint8_t*)vbase + (offset * proc->kid->value_size);
+
+     return proc->kid->update_value_func(proc->kproc, vptr, proc->current_tuple,
+                                         proc->current_key, member);
+
+}
+
+
+static int wsprockeystate_process_multivalue(void * vinstance, wsdata_t* input_data,
+                                             ws_doutput_t * dout, int type_index) {
+
+     wsprockeystate_inst_t * proc = (wsprockeystate_inst_t*)vinstance;
+     proc->rec++;
+
+     proc->dout = dout;
+     int rtn = 0; 
+
+     wsdata_t * key = NULL;
+
+     //return the first key found
+     tuple_nested_search(input_data, &proc->nest_key,
+                         wspks_nest_search_key,
+                         proc, &key);
+
+     if (!key) {
+          return 0;
+     }
+
+     void * sdata = stringhash5_find_attach_wsdata(proc->state_table, key);
+     if (!sdata) {
+          return 0;
+     }
+     wspks_update_generation(proc, sdata);
+
+     if (proc->kid->update_func) {
+          rtn += proc->kid->update_func(proc->kproc, sdata, input_data, key);
+     }
+
+     //get values
+     uint8_t * vptr = (uint8_t*)sdata + proc->core_len;
+     if (proc->kid->update_value_func) {
+          proc->current_key = key;
+          proc->current_tuple = input_data;
+          rtn += tuple_nested_search_ext(input_data, &proc->nest_mvalue,
+                                         wspks_nest_search_value,
+                                         proc, vptr);
+     }
+     if (proc->kid->post_update_mvalue_func) {
+          rtn += proc->kid->post_update_mvalue_func(proc->kproc, sdata,
+                                                    input_data, key,
+                                                    proc->mvalue_cnt, vptr);
+     }
+
+     int do_expire = 0;
+     if (proc->kid->force_expire_func) { 
+          if (proc->kid->force_expire_func(proc->kproc, sdata,
+                                           input_data, key)) {
+               wsprockeystate_expire(sdata, proc);
+               do_expire = 1;
+          }
+     }
+
+     if (do_expire) {
+          stringhash5_delete_wsdata(proc->state_table, key);
+     }
+
+     stringhash5_unlock(proc->state_table);
+
+     //see if records need to be expired
+     wspks_check_expire_loop(proc);
+
+     if (rtn) { 
+          ws_set_outdata(input_data, proc->outtype_tuple, dout);
+     }
+
+     return 1;
+
+}
 //// proc processing function assigned to a specific data type in proc_io_init
 //return 1 if output is available
 // return 2 if not output
@@ -370,10 +529,12 @@ static int wsprockeystate_process_key(void * vinstance, wsdata_t* input_data,
                }
                wspks_update_generation(proc, sdata);
                rtn += proc->kid->update_func(proc->kproc, sdata, input_data, mset[j]);
-               if (proc->kid->force_expire_func && proc->kid->expire_func) {
+               if (proc->kid->force_expire_func) {
                     if (proc->kid->force_expire_func(proc->kproc, sdata,
                                                      input_data, mset[j])) {
-                         proc->kid->expire_func(proc->kproc, sdata, proc->dout, proc->outtype_tuple);
+                         if (proc->kid->expire_func) {
+                              proc->kid->expire_func(proc->kproc, sdata, proc->dout, proc->outtype_tuple);
+                         }
                          memset(sdata, 0, proc->kid->state_len);
                     }
                }
@@ -431,10 +592,12 @@ static int wsprockeystate_process_keyvalue(void * vinstance, wsdata_t* input_dat
                                                    sdata,
                                                    input_data,
                                                    key, mset[j]);
-               if (proc->kid->force_expire_func && proc->kid->expire_func) {
+               if (proc->kid->force_expire_func) {
                     if (proc->kid->force_expire_func(proc->kproc, sdata,
                                                      input_data, mset[j])) {
-                         proc->kid->expire_func(proc->kproc, sdata, proc->dout, proc->outtype_tuple);
+                         if (proc->kid->expire_func) {
+                              proc->kid->expire_func(proc->kproc, sdata, proc->dout, proc->outtype_tuple);
+                         }
                          memset(sdata, 0, proc->kid->state_len);
                     }
                }
@@ -459,7 +622,7 @@ static int wsprockeystate_expire_port(void * vinstance, wsdata_t* input_data,
      wsprockeystate_inst_t * proc = (wsprockeystate_inst_t*)vinstance;
      dprint("%s expire port called", proc->kid->name);
      if (!proc->kid->gradual_expire) {
-          if (proc->kid->expire_func) {
+          if (proc->kid->expire_func || proc->kid->expire_multi_func) {
                stringhash5_scour_and_flush(proc->state_table, wsprockeystate_expire, proc);
           }
           else {
@@ -494,7 +657,7 @@ static int wsprockeystate_process_flush(void * vinstance, wsdata_t* input_data,
      wsprockeystate_inst_t * proc = (wsprockeystate_inst_t*)vinstance;
      proc->dout = dout;
 
-     if (proc->kid->expire_func) {
+     if (proc->kid->expire_func || proc->kid->expire_multi_func) {
           stringhash5_scour_and_flush(proc->state_table, wsprockeystate_expire, proc);
      }
      else {
@@ -508,9 +671,38 @@ static int wsprockeystate_process_flush(void * vinstance, wsdata_t* input_data,
      return 1;
 }
 
+static int wsprockeystate_mvdelete_key(void * vinstance, wsdata_t* input_data,
+                                     ws_doutput_t * dout, int type_index) {
+     wsprockeystate_inst_t * proc = (wsprockeystate_inst_t*)vinstance;
+     proc->dout = dout;
+
+     wsdata_t * key;
+     tuple_nested_search(input_data, &proc->nest_key,
+                         wspks_nest_search_key,
+                         proc, &key);
+
+     if (!key) {
+          return 0;
+     }
+
+     if (proc->kid->expire_multi_func) {
+          void * sdata = NULL;
+          sdata = stringhash5_find_wsdata(proc->state_table, key);
+          if (sdata) {
+               wsprockeystate_expire(sdata, proc);
+               stringhash5_unlock(proc->state_table);
+          }
+     }
+
+     stringhash5_delete_wsdata(proc->state_table, key);
+
+     return 1;
+}
+
 static int wsprockeystate_delete_key(void * vinstance, wsdata_t* input_data,
                                      ws_doutput_t * dout, int type_index) {
      wsprockeystate_inst_t * proc = (wsprockeystate_inst_t*)vinstance;
+     proc->dout = dout;
 
      //search for items in tuples
      wsdata_t ** mset;

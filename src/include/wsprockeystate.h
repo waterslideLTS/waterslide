@@ -47,7 +47,9 @@ typedef int (*wsprockeystate_sub_option)(void *, void *, int, const char *);
 typedef int (*wsprockeystate_sub_update)(void *, void *, wsdata_t *, wsdata_t *);
 typedef int (*wsprockeystate_sub_force_expire)(void *, void *, wsdata_t *, wsdata_t *);
 typedef int (*wsprockeystate_sub_update_value)(void *, void *, wsdata_t *, wsdata_t *, wsdata_t *);
+typedef int (*wsprockeystate_sub_post_update_mvalue)(void *, void *, wsdata_t *, wsdata_t *, int, void *);
 typedef void (*wsprockeystate_sub_expire)(void *, void *, ws_doutput_t *, ws_outtype_t *);
+typedef void (*wsprockeystate_sub_expire_multi)(void *, void *, ws_doutput_t *, ws_outtype_t *, int, void *);
 typedef void (*wsprockeystate_sub_flush)(void *);
 typedef int (*wsprockeystate_sub_destroy)(void *);
 
@@ -56,6 +58,7 @@ typedef struct _wsprockeystate_kid_t {
      wsprockeystate_sub_option option_func;
      wsprockeystate_sub_update update_func;
      wsprockeystate_sub_update_value update_value_func;
+     wsprockeystate_sub_post_update_mvalue post_update_mvalue_func;
      wsprockeystate_sub_force_expire force_expire_func;
      wsprockeystate_sub_expire expire_func;
      wsprockeystate_sub_flush flush_func;
@@ -66,6 +69,10 @@ typedef struct _wsprockeystate_kid_t {
      char * option_str;
      proc_labeloffset_t * labeloffset;
      int gradual_expire;
+
+     int multivalue;
+     int value_size;
+     wsprockeystate_sub_expire_multi expire_multi_func;
 } wsprockeystate_kid_t;
 
 int wsprockeystate_init(int, char *const*, void **, void *, wsprockeystate_kid_t *);

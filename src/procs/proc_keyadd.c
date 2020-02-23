@@ -37,6 +37,7 @@ SOFTWARE.
 
 int is_prockeystate = 1;
 int prockeystate_gradual_expire = 1;
+int prockeystate_multivalue = 1;
 
 char proc_version[]     = "1.5";
 char *proc_menus[] = { "Count", NULL };
@@ -63,12 +64,14 @@ proc_option_t proc_opts[] = {
      /*  'option character', "long option string", "option argument",
 	 "option description", <allow multiple>, <required>*/
      {'V',"","label",
-     "LABEL of value to add at key",0,0},
+     "LABEL of value to add at key (can specify multiple)",0,0},
      {'P',"","",
-     "calculate percentage",0,0},
+     "calculate percentage of count",0,0},
      {'M',"","records",
      "maximum table size",0,0},
      {'L',"","LABEL",
+     "label the value sum as LABEL (in order of values)",0,0},
+     {'C',"","LABEL",
      "label the count as LABEL",0,0},
      {'R',"","",
       "keep only the member that matches, not the whole tuple",0,0},
@@ -85,6 +88,8 @@ char *proc_tuple_member_labels[] = {"COUNT", NULL};
 proc_port_t proc_input_ports[] =  {
      {"none","normal operation"},
      {"EXPIRE","trigger gradual expiration of buffered states"},
+     {"DELETE","expire specific key, flush state"},
+     {"REMOVE","expire specific key, flust state"},
      {NULL, NULL}
 };
 
@@ -97,12 +102,21 @@ typedef struct _key_data_t {
 
 int prockeystate_state_size = sizeof(key_data_t);
 
+typedef struct _value_data_t {
+     uint64_t sum;
+} value_data_t;
+
+int prockeystate_value_size = sizeof(value_data_t);
+
 typedef struct _proc_instance_t {
      uint64_t totalcnt;
      uint64_t outcnt;
 
      wslabel_t * label_cnt;
      wslabel_t * label_pct;
+     wslabel_t * label_sum;
+     wslabel_t ** label_value_sum;
+     int max_values;
      int keep_only_key;
      int do_pct;
 } proc_instance_t;
@@ -113,10 +127,11 @@ proc_labeloffset_t proc_labeloffset[] =
 {
      {"COUNT",offsetof(proc_instance_t, label_cnt)},
      {"PCT",offsetof(proc_instance_t, label_pct)},
+     {"SUM",offsetof(proc_instance_t, label_sum)},
      {"",0}
 };
 
-char prockeystate_option_str[]    = "PRL:";
+char prockeystate_option_str[]    = "PRL:C:";
 
 int prockeystate_option(void * vproc, void * type_table, int c, const char * str) {
      proc_instance_t * proc = (proc_instance_t *)vproc;
@@ -128,8 +143,23 @@ int prockeystate_option(void * vproc, void * type_table, int c, const char * str
      case 'P':
           proc->do_pct = 1;
           break;
-     case 'L':
+     case 'C':
           proc->label_cnt = wsregister_label(type_table, str);
+          break;
+     case 'L':
+          if (!proc->label_value_sum) {
+               proc->label_value_sum = (wslabel_t**)calloc(1, sizeof(wslabel_t*));
+          }
+          else {
+               proc->label_value_sum = (wslabel_t**)realloc(proc->label_value_sum,
+                                                            (proc->max_values + 1) *
+                                                            sizeof(wslabel_t*));
+          }
+          if (!proc->label_value_sum) {
+               return 0;
+          }
+          proc->label_value_sum[proc->max_values] = wsregister_label(type_table, str);
+          proc->max_values++;
           break;
      }
      return 1;
@@ -138,21 +168,35 @@ int prockeystate_option(void * vproc, void * type_table, int c, const char * str
 static inline void add_scores(proc_instance_t *proc, 
                               wsdata_t * tup, key_data_t * kd, 
                               ws_doutput_t * dout,
-                              ws_outtype_t * outtype_tuple) {
+                              ws_outtype_t * outtype_tuple,
+                              int value_cnt, void * vlist) {
      tuple_member_create_uint64(tup, kd->cnt, proc->label_cnt);
      if (proc->do_pct) {
           tuple_member_create_double(tup,
                                      (double)kd->cnt/(double)proc->totalcnt,
                                      proc->label_pct);
      }
+     int i;
+     for (i = 0; i < value_cnt; i++) {
+          uint8_t * offset = (uint8_t*)vlist + i * sizeof(value_data_t);
+          value_data_t * vdata = (value_data_t*)offset;
+         
+          if (i < proc->max_values) {
+               tuple_member_create_uint64(tup, vdata->sum, proc->label_value_sum[i]);
+          }
+          else {
+               tuple_member_create_uint64(tup, vdata->sum, proc->label_sum);
+          }
+     }
      ws_set_outdata(tup, outtype_tuple, dout);
      proc->outcnt++;
 }
 
 // reset the counts
-void prockeystate_expire(void * vproc, void * vdata,
-                         ws_doutput_t * dout,
-                         ws_outtype_t * outtype_tuple) {
+void prockeystate_expire_multi(void * vproc, void * vdata,
+                               ws_doutput_t * dout,
+                               ws_outtype_t * outtype_tuple, 
+                               int value_cnt, void * vlist) {
      proc_instance_t * proc = (proc_instance_t *)vproc;
      key_data_t * kd = (key_data_t*)vdata;
      if (kd->wsd) {
@@ -160,11 +204,14 @@ void prockeystate_expire(void * vproc, void * vdata,
                wsdata_t * tup = wsdata_alloc(dtype_tuple);
                if (tup) {
                     add_tuple_member(tup, kd->wsd);
-                    add_scores(proc, tup, kd, dout, outtype_tuple);
+                    add_scores(proc, tup, kd, dout, outtype_tuple,
+                               value_cnt,
+                               vlist);
                }
           }
           else {
-               add_scores(proc, kd->wsd, kd, dout, outtype_tuple);
+               add_scores(proc, kd->wsd, kd, dout, outtype_tuple,
+                          value_cnt, vlist);
           }
           wsdata_delete(kd->wsd);
           kd->wsd = NULL;
@@ -181,22 +228,10 @@ int prockeystate_update_value(void * vproc, void * vstate, wsdata_t * tuple,
           return 0;
      }
 
-     proc_instance_t * proc = (proc_instance_t*)vproc;
-     key_data_t * kdata = (key_data_t *) vstate;
+     value_data_t * vdata = (value_data_t *) vstate;
 
-     proc->totalcnt += v64;
-     kdata->cnt += v64;
-     if (!kdata->wsd) {
-          if (proc->keep_only_key) {
-               kdata->wsd = key;
-               wsdata_add_reference(key);
-          }
-          else {
-               kdata->wsd = tuple;
-               wsdata_add_reference(tuple);
-          }
-     }
-
+     vdata->sum += v64;
+     
      return 0;
 }
 

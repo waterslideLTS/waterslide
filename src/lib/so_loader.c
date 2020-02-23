@@ -389,10 +389,15 @@ static int so_load_wsprockeystate(void * sh_file_handle,
           dlsym(sh_file_handle,"prockeystate_update_value");
      module->kskid->expire_func =
           (wsprockeystate_sub_expire) dlsym(sh_file_handle,"prockeystate_expire");
+     module->kskid->expire_multi_func = 
+          (wsprockeystate_sub_expire_multi) dlsym(sh_file_handle,"prockeystate_expire_multi");
      module->kskid->flush_func =
           (wsprockeystate_sub_flush) dlsym(sh_file_handle,"prockeystate_flush");
      module->kskid->destroy_func =
           (wsprockeystate_sub_destroy) dlsym(sh_file_handle,"prockeystate_destroy");
+     module->kskid->post_update_mvalue_func =
+          (wsprockeystate_sub_post_update_mvalue)
+          dlsym(sh_file_handle,"prockeystate_post_update_mvalue");
 
      module->kskid->labeloffset =
           (proc_labeloffset_t *) dlsym(sh_file_handle,"proc_labeloffset");
@@ -403,6 +408,17 @@ static int so_load_wsprockeystate(void * sh_file_handle,
      gradual_expire = (int*)dlsym(sh_file_handle,"prockeystate_gradual_expire");
      if (gradual_expire) {
           module->kskid->gradual_expire = *gradual_expire;
+     }
+
+     int * multivalue;
+     multivalue = (int*)dlsym(sh_file_handle,"prockeystate_multivalue");
+     if (multivalue) {
+          module->kskid->multivalue = *multivalue;
+     }
+     int * value_size;
+     value_size = (int*)dlsym(sh_file_handle,"prockeystate_value_size");
+     if (value_size) {
+          module->kskid->value_size = *value_size;
      }
 
      if (!module->kskid->option_str) {
