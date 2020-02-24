@@ -43,6 +43,7 @@ CPP_OPEN
 #endif // __cplusplus
 
 typedef int (*wsprockeystate_sub_init)(void *, void *, int);
+typedef int (*wsprockeystate_sub_init_mvalue)(void *, void *, int, wslabel_t **);
 typedef int (*wsprockeystate_sub_option)(void *, void *, int, const char *);
 typedef int (*wsprockeystate_sub_update)(void *, void *, wsdata_t *, wsdata_t *);
 typedef int (*wsprockeystate_sub_force_expire)(void *, void *, wsdata_t *, wsdata_t *);
@@ -55,6 +56,7 @@ typedef int (*wsprockeystate_sub_destroy)(void *);
 
 typedef struct _wsprockeystate_kid_t {
      wsprockeystate_sub_init init_func;
+     wsprockeystate_sub_init_mvalue init_mvalue_func;
      wsprockeystate_sub_option option_func;
      wsprockeystate_sub_update update_func;
      wsprockeystate_sub_update_value update_value_func;

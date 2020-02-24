@@ -375,6 +375,8 @@ static int so_load_wsprockeystate(void * sh_file_handle,
 
      module->kskid->init_func =
           (wsprockeystate_sub_init) dlsym(sh_file_handle,"prockeystate_init");
+     module->kskid->init_mvalue_func =
+          (wsprockeystate_sub_init_mvalue) dlsym(sh_file_handle,"prockeystate_init_mvalue");
      module->kskid->option_func =
           (wsprockeystate_sub_option) dlsym(sh_file_handle,"prockeystate_option");
      module->kskid->option_str =

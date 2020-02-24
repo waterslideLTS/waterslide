@@ -63,6 +63,7 @@ typedef struct _wsprockeystate_inst_t {
 
      int multivalue;
      wslabel_nested_set_ext_t nest_mvalue;
+     wslabel_t ** label_values;
      int mvalue_cnt;
      wslabel_nested_set_t nest_key;
      int core_len;
@@ -110,8 +111,24 @@ static int wsprockeystate_cmd_options(int argc, char * const * argv,
                     wslabel_nested_search_build_ext(type_table,
                                                     &proc->nest_mvalue,
                                                     optarg, proc->mvalue_cnt);
+
+                    if (proc->label_values) {
+                         proc->label_values =
+                              (wslabel_t **)realloc(proc->label_values,
+                                                    (proc->mvalue_cnt + 1) * sizeof(wslabel_t*));
+                    }
+                    else {
+                         proc->label_values =
+                              (wslabel_t**)calloc(proc->mvalue_cnt + 1, sizeof(wslabel_t*));
+                    }
+                    if (!proc->label_values) {
+                         error_print("unable to allocate memory for values");
+                         return 0;
+                    }
+                    proc->label_values[proc->mvalue_cnt] = wssearch_label(type_table, optarg);
                     proc->mvalue_cnt++;
                     tool_print("%s using value with label %s", proc->kid->name, optarg);
+                    
                }
                else {
                     proc->label_value = wssearch_label(type_table, optarg);
@@ -256,6 +273,12 @@ int wsprockeystate_init(int argc, char * const * argv, void ** vinstance,
                }
           }
           if (!kid->init_func(proc->kproc, type_table, (proc->label_value) ? 1 : 0)) {
+               return 0;
+          }
+     }
+     if (kid->init_mvalue_func && proc->multivalue) {
+          if (!kid->init_mvalue_func(proc->kproc, type_table, proc->mvalue_cnt,
+                                     proc->label_values)) {
                return 0;
           }
      }
