@@ -389,6 +389,9 @@ static int so_load_wsprockeystate(void * sh_file_handle,
      module->kskid->update_value_func =
           (wsprockeystate_sub_update_value)
           dlsym(sh_file_handle,"prockeystate_update_value");
+     module->kskid->update_value_index_func =
+          (wsprockeystate_sub_update_value_index)
+          dlsym(sh_file_handle,"prockeystate_update_value_index");
      module->kskid->expire_func =
           (wsprockeystate_sub_expire) dlsym(sh_file_handle,"prockeystate_expire");
      module->kskid->expire_multi_func = 
