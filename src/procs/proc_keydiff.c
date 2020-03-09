@@ -142,8 +142,15 @@ int prockeystate_init_mvalue(void * vproc, void * type_table, int vcount, wslabe
      int i;
 
      for (i = proc->max_values; i < vcount; i++) {
+          char * v = rindex(vlabels[i]->name, '.');
+          if (v) {
+              v++; 
+          }
+          else {
+               v = vlabels[i]->name;
+          }
           proc->label_value_diff[i] = wsregister_label_wprefix(type_table,
-                                                               vlabels[i]->name,
+                                                               v,
                                                                "_DIFF");
      }
      proc->max_values = vcount;
