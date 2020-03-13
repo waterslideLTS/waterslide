@@ -265,6 +265,13 @@ int wsprockeystate_init(int argc, char * const * argv, void ** vinstance,
           tool_print("%s no value specified with label", proc->kid->name);
           return 0;
      }
+     if (proc->multivalue &&
+         (kid->update_value_func || kid->update_value_index_func)
+         && !kid->update_func && !proc->mvalue_cnt) {
+          tool_print("%s no value specified with label", proc->kid->name);
+          return 0;
+     }
+
 
      if (kid->init_func) {
           if (proc->multivalue) {
@@ -435,6 +442,23 @@ static int wspks_nest_search_key(void * vproc, void * vkey,
      return 0;
 }
 
+static int wspks_nest_search_value_index(void * vproc, void * vbase,
+                                         wsdata_t * tdata, wsdata_t * member,
+                                         wslabel_t * label, int offset) {
+
+     wsprockeystate_inst_t * proc = (wsprockeystate_inst_t*)vproc;
+
+     if (offset >= proc->mvalue_cnt) {
+          return 0; //invalid offset
+     }
+     uint8_t * vptr = (uint8_t*)vbase + (offset * proc->kid->value_size);
+
+     return proc->kid->update_value_index_func(proc->kproc, vptr, proc->current_tuple,
+                                               proc->current_key, member, offset);
+
+}
+
+
 static int wspks_nest_search_value(void * vproc, void * vbase,
                                    wsdata_t * tdata, wsdata_t * member,
                                    wslabel_t * label, int offset) {
@@ -484,7 +508,14 @@ static int wsprockeystate_process_multivalue(void * vinstance, wsdata_t* input_d
 
      //get values
      uint8_t * vptr = (uint8_t*)sdata + proc->core_len;
-     if (proc->kid->update_value_func) {
+     if (proc->kid->update_value_index_func) {
+          proc->current_key = key;
+          proc->current_tuple = input_data;
+          rtn += tuple_nested_search_ext(input_data, &proc->nest_mvalue,
+                                         wspks_nest_search_value_index,
+                                         proc, vptr);
+     }
+     else if (proc->kid->update_value_func) {
           proc->current_key = key;
           proc->current_tuple = input_data;
           rtn += tuple_nested_search_ext(input_data, &proc->nest_mvalue,
