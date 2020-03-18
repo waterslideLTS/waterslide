@@ -1,7 +1,7 @@
 *******************************************************************************
 WaterSlide -- a lightweight streaming metadata processor
 *******************************************************************************
-Updated July 2016
+Updated March 2020
 
 WaterSlide is an event-at-a-time architecture for processing metadata. It is
 designed to take in a set of streaming events from multiple sources,
