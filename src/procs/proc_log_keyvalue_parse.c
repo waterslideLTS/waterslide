@@ -121,7 +121,7 @@ proc_labeloffset_t proc_labeloffset[] =
      {"",0}
 };
 
-char procbuffer_option_str[]    = "a:A:i:I:XR:K:k:N:L:";
+char procbuffer_option_str[]    = "E:a:A:i:I:XR:K:k:N:L:";
 
 int procbuffer_option(void * vproc, void * type_table,
                       int c, const char * str) {
