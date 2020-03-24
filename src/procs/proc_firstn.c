@@ -367,6 +367,11 @@ int proc_destroy(void * vinstance) {
      tool_print("meta_proc cnt %" PRIu64, proc->meta_process_cnt);
      tool_print("output cnt %" PRIu64, proc->outcnt);
 
+     if (proc->outcnt && proc->meta_process_cnt) {
+     tool_print("output percentage %.2f%%",
+                (double)proc->outcnt * 100/(double)proc->meta_process_cnt);
+     }
+
      //destroy table
      stringhash5_destroy(proc->key_table);
 
