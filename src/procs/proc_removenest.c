@@ -34,7 +34,7 @@ OTHER REQUIRED LICENSE TERMS
 #include "waterslide_io.h"
 #include "procloader.h"
 #include "evahash64.h"
-#include "stringhash9a.h"
+#include "stringhash5.h"
 #include "datatypes/wsdt_tuple.h"
 
 char proc_version[]     = "1.5";
@@ -62,13 +62,18 @@ char *proc_tuple_container_labels[] = {NULL};
 char *proc_tuple_conditional_container_labels[] = {NULL};
 char *proc_tuple_member_labels[] = {NULL};
 
+typedef struct _key_data_t {
+     uint64_t generation;
+     wsdata_t * value;
+} key_data_t; 
+
 //function prototypes for local functions
 static int process_tuple(void *, wsdata_t*, ws_doutput_t*, int);
 
 typedef struct _proc_instance_t {
      uint64_t meta_process_cnt;
      uint64_t outcnt;
-     stringhash9a_t * ignore_table;
+     stringhash5_t * ignore_table;
      ws_outtype_t * outtype_tuple;
      wslabel_nested_set_t nest;
      uint64_t generation;
@@ -95,7 +100,7 @@ static int proc_cmd_options(int argc, char ** argv,
      return 1;
 }
 
-#define IGNORE_TABLE_SIZE 10000
+#define IGNORE_TABLE_SIZE 50000
 
 // the following is a function to take in command arguments and initalize
 // this processor's instance..
@@ -115,7 +120,8 @@ int proc_init(wskid_t * kid, int argc, char ** argv, void ** vinstance, ws_sourc
           return 0;
      }
 
-     proc->ignore_table = stringhash9a_create(0, IGNORE_TABLE_SIZE);
+     proc->ignore_table = stringhash5_create(0, IGNORE_TABLE_SIZE,
+                                             sizeof(key_data_t));
      if (!proc->ignore_table) {
           tool_print("unable to create a stringhash9a table");
           return 0;
@@ -159,16 +165,26 @@ static int nest_ignore_element(void * vproc, void * vevent,
      //add pointer member address to hashtable
      uint64_t phash = member_pointer_hash(proc, member);
      dprint("found nest element to remove %"PRIu64, phash);
-     stringhash9a_set(proc->ignore_table, &phash, sizeof(uint64_t));
+     key_data_t * kdata =
+          stringhash5_find_attach(proc->ignore_table, &phash, sizeof(uint64_t));
+     if (!kdata) {
+          return 0;
+     }
+     kdata->generation = proc->generation;
+     kdata->value = member;
      return 1;
 }
 
 static inline int is_removed(proc_instance_t * proc, wsdata_t * member) {
      //check if pointer to member is in remove list
      uint64_t phash = member_pointer_hash(proc, member);
-     int rtn = stringhash9a_check(proc->ignore_table, &phash, sizeof(uint64_t));
-     dprint("checking if element is to be removed %"PRIu64 " %s", phash, rtn ?  "yes":"no");
-     return rtn;
+     key_data_t * kdata = stringhash5_find(proc->ignore_table, &phash, sizeof(uint64_t));
+     if (!kdata || (kdata->generation != proc->generation) || 
+         (kdata->value != member)) {
+          return 0;
+     }
+     //dprint("checking if element is to be removed %"PRIu64 " %s", phash, rtn ?  "yes":"no");
+     return 1;
 }
 
 static int tuple_removal_deep_copy(proc_instance_t * proc, wsdata_t* src, wsdata_t* dst) {
@@ -258,7 +274,7 @@ int proc_destroy(void * vinstance) {
 
      //free dynamic allocations
      if (proc->ignore_table) {
-          stringhash9a_destroy(proc->ignore_table);
+          stringhash5_destroy(proc->ignore_table);
      }
      free(proc);
 
