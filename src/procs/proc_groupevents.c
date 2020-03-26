@@ -26,7 +26,7 @@ OTHER REQUIRED LICENSE TERMS
 //   expiration triggers.
 
 #define PROC_NAME "groupevents"
-#define DEBUG 1
+//#define DEBUG 1
 #include <stdlib.h>
 #include <stdint.h>
 #include <stdio.h>
