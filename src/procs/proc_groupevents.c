@@ -26,7 +26,7 @@ OTHER REQUIRED LICENSE TERMS
 //   expiration triggers.
 
 #define PROC_NAME "groupevents"
-//#define DEBUG 1
+#define DEBUG 1
 #include <stdlib.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -496,7 +496,7 @@ static int nest_search_key(void * vproc, void * vkey,
 static int nest_search_keepone(void * vproc, void * vkey,
                                wsdata_t * tdata, wsdata_t * member,
                                wslabel_t * label, int offset) {
-     dprint("nest_search_key");
+     dprint("nest_search_keepone");
      proc_instance_t * proc = (proc_instance_t*)vproc;
      key_data_t * kdata = (key_data_t*)vkey;
 
@@ -543,8 +543,13 @@ static int proc_expire(void * vinstance, wsdata_t* input_data,
      proc->dout = dout;
 
      if (!proc->global_key && proc->session_walker) {
+          //force expriation to complete
           if (proc->loop_started) {
-               return 1;
+               dprint("force expiration to complete");
+               while (proc->loop_started) {
+                    check_expire_loop(proc);
+               }
+               dprint("done with forced expiration");
           }
           dprint("new loop");
           proc->loop_started = 1;
@@ -672,8 +677,16 @@ static int proc_tuple(void * vinstance, wsdata_t* input_data,
      if (!kdata) {
           return 0;
      }
-     kdata->generation = proc->generation;
 
+     //since we are storing key - check hash collision on key
+     if (kdata->key && key) {
+         //TODO 
+         uint64_t kdh = evahash64_data(kdata->key, 0x55613443);
+         uint64_t kh = evahash64_data(key, 0x55613443);
+         if (kdh != kh) {
+              emit_state(kdata, proc);
+         }
+     }
      uint64_t commonhash = 0;
      wsdata_t * common = NULL;
      if (proc->nest_common.cnt) {
@@ -690,6 +703,8 @@ static int proc_tuple(void * vinstance, wsdata_t* input_data,
           emit_state(kdata, proc);
           kdata->commonhash = commonhash;
      }
+
+     kdata->generation = proc->generation;
 
      //populate state as needed
      if (!kdata->key && key) {
@@ -729,7 +744,6 @@ static int proc_tuple(void * vinstance, wsdata_t* input_data,
 
      check_expire_loop(proc);
 
-     //always return 1 since we don't know if table will flush old data
      return 1;
 }
 
