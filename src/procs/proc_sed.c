@@ -237,7 +237,7 @@ int procbuffer_decode(void * vproc, wsdata_t * tdata,
 			     strlen(proc->original));
 	 
 	 if (firstmatch == NULL) { // nothing to be replaced
-	   if (member->dtype == dtype_string) {
+	   if ((member->dtype == dtype_string) || (member->dtype == dtype_ts)) {
 	     bin = (wsdt_binary_t *)tuple_create_string(tdata, 
 							proc->label_decode, 
 							buflen);
@@ -270,7 +270,7 @@ int procbuffer_decode(void * vproc, wsdata_t * tdata,
 	 delta = (strlen(proc->replace) - strlen(proc->original)) * count;
 	 resultlen = buflen + delta;
 	 
-	 if (member->dtype == dtype_string) {
+      if ((member->dtype == dtype_string) || (member->dtype == dtype_ts)) {
 	   bin = (wsdt_binary_t *)tuple_create_string(tdata, proc->label_decode, resultlen);
 	 }
 	 else {
@@ -306,24 +306,24 @@ int procbuffer_decode(void * vproc, wsdata_t * tdata,
        }
      case 'y':
        { // Handle SED 'y' (translate) operation
-	 if (member->dtype == dtype_string) {
-	   bin = (wsdt_binary_t *)tuple_create_string(tdata, proc->label_decode, buflen);
-	 }
-	 else {
-	   bin = tuple_create_binary(tdata, proc->label_decode, buflen);
-	 }
-	 if (!bin) {
-	   return 1; // tuple is full
-	 }
-	 // do the translation 
-	 for (i=0; i<buflen; i++) {
-	   bin->buf[i] = proc->xlate[buf[i]];
-	 }
+            if ((member->dtype == dtype_string) || (member->dtype == dtype_ts)) {
+                 bin = (wsdt_binary_t *)tuple_create_string(tdata, proc->label_decode, buflen);
+            }
+            else {
+                 bin = tuple_create_binary(tdata, proc->label_decode, buflen);
+            }
+            if (!bin) {
+                 return 1; // tuple is full
+            }
+            // do the translation 
+            for (i=0; i<buflen; i++) {
+                 bin->buf[i] = proc->xlate[buf[i]];
+            }
 
-	 bin->len = buflen;
-	 
-	 return 1;
-	 break;
+            bin->len = buflen;
+
+            return 1;
+            break;
        }
      default:
        {
