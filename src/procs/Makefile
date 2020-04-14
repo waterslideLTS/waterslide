@@ -65,6 +65,16 @@ proc_hmac$(WS_SFX): proc_hmac.c
 endif
 
 
+ifdef HASEXPAT
+proc_parsexml$(WS_SFX): proc_parsexml.c
+        $(SHOWFILE) 
+        $(CC) $(CFLAGS) $< -o $@ $(LDFLAGS) -lexpat
+        $(INSTALL) $@ $(WS_PROCS_DIR)
+else
+proc_parsexml$(WS_SFX): proc_parsexml.c
+        @echo " not building $@, set HASEXPAT=1 to build"
+endif
+
 ifdef HASPCAP
 proc_pcapin$(WS_SFX): proc_pcapin.c
 	$(SHOWFILE) 
