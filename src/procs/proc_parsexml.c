@@ -64,7 +64,7 @@ proc_option_t proc_opts[] = {
      /*  'option character', "long option string", "option argument",
 	 "option description", <allow multiple>, <required>*/
      {'N',"","LABEL",
-     "label of subtuple",0,0},
+     "label of subtuple for parsed elements",0,0},
      //the following must be left as-is to signify the end of the array
      {' ',"","",
      "",0,0}
