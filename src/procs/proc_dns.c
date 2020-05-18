@@ -799,28 +799,39 @@ static int process_rrec(proc_instance_t * proc, wsdata_t * tdata, wsdata_t * mem
      return offset;
 }
 
+static inline void local_add_label(wsdata_t * base, wsdata_t * tdata, wslabel_t * label) {
+     if (base) {
+          tuple_add_member_label(base, tdata, label);
+     }
+     else {
+          wsdata_add_label(tdata, label);
+     }
+}
+
 int procbuffer_decode(void * vproc, wsdata_t * tdata,
                       wsdata_t * member, uint8_t * buf, int buflen) {
      proc_instance_t * proc = (proc_instance_t*)vproc;
+     wsdata_t * base = NULL;
 
      if (proc->label_parent) {
           wsdata_t * parent =
                tuple_member_create_wsdata(tdata, dtype_tuple, proc->label_parent);
 
           if (parent) {
+               base = tdata;
                tdata = parent;
           }
      }
 
      if (proc->tcpdns) {
           if (buflen < 2) {
-               wsdata_add_label(tdata, proc->label_invalidtcpdns);
+               local_add_label(base, tdata, proc->label_invalidtcpdns);
                return 1;
           }
           uint16_t tcpbuflen = (buf[0]<<8) + buf[1];
           tuple_member_create_uint16(tdata, tcpbuflen, proc->label_tcpdnslen);
           if (buflen + 2 < tcpbuflen) {
-               wsdata_add_label(tdata, proc->label_invalidtcpdns);
+               local_add_label(base, tdata, proc->label_invalidtcpdns);
                dprint("truncated dns");
           }
           //force offset
@@ -830,7 +841,7 @@ int procbuffer_decode(void * vproc, wsdata_t * tdata,
 
      if (buflen < sizeof(dnsheader_t)) {
           dprint("invalid header");
-          wsdata_add_label(tdata, proc->label_invaliddns);
+          local_add_label(base, tdata, proc->label_invaliddns);
           return 1;
      }
      dnsheader_t * dhead = (dnsheader_t *)buf;
@@ -849,10 +860,10 @@ int procbuffer_decode(void * vproc, wsdata_t * tdata,
      uint8_t rcode = dhead->code2 & 0xF;
 
      if (qr == 0) {
-          wsdata_add_label(tdata, proc->label_query);
+          local_add_label(base, tdata, proc->label_query);
      }
      else {
-          wsdata_add_label(tdata, proc->label_response);
+          local_add_label(base, tdata, proc->label_response);
      }
 
      dprint("decode %x %04x %x %x %x %x %03x %04x", qr, opcode, aa,
@@ -861,16 +872,16 @@ int procbuffer_decode(void * vproc, wsdata_t * tdata,
      tuple_member_create_uint16(tdata, opcode, proc->label_opcode);
                                 
      if (aa) {
-          wsdata_add_label(tdata, proc->label_aa);
+          local_add_label(base, tdata, proc->label_aa);
      }
      if (tc) {
-          wsdata_add_label(tdata, proc->label_trunc);
+          local_add_label(base, tdata, proc->label_trunc);
      }
      if (rd) {
-          wsdata_add_label(tdata, proc->label_rd);
+          local_add_label(base, tdata, proc->label_rd);
      }
      if (ra) {
-          wsdata_add_label(tdata, proc->label_ra);
+          local_add_label(base, tdata, proc->label_ra);
      }
      if (z) {
           tuple_member_create_uint16(tdata, z, proc->label_z);
@@ -878,7 +889,7 @@ int procbuffer_decode(void * vproc, wsdata_t * tdata,
      if (rcode) {
           wsdata_t * rcd = tuple_member_create_uint16(tdata, rcode, proc->label_rcode);
           if (rcode == 3) {
-               wsdata_add_label(tdata, proc->label_nx);
+               local_add_label(base, tdata, proc->label_nx);
                tuple_add_member_label(tdata, rcd, proc->label_nx);
           }
      }
@@ -898,7 +909,7 @@ int procbuffer_decode(void * vproc, wsdata_t * tdata,
      int remainlen = buflen - sizeof(dnsheader_t);
 
      if (remainlen < recmin) {
-          wsdata_add_label(tdata, proc->label_invaliddns);
+          local_add_label(base, tdata, proc->label_invaliddns);
           //truncated record detection..
           return 1;
      }
