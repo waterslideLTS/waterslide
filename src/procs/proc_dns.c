@@ -54,6 +54,8 @@ proc_option_t proc_opts[] = {
      /*  'option character', "long option string", "option argument",
       "option description", <allow multiple>, <required>*/
      //the following must be left as-is to signify the end of the array
+     {'L',"","LABEL",
+     "name of subtuple for decoded DNS elements",0,0},
      {'t',"","",
      "process as TCP dns",0,0},
      {'T',"","",
@@ -71,6 +73,8 @@ char *proc_tuple_conditional_container_labels[]   = {NULL};
 
 //function prototypes for local functions
 typedef struct _proc_instance_t {
+     wslabel_t * label_parent;
+
      wslabel_t * label_id;
      wslabel_t * label_query;
      wslabel_t * label_response;
@@ -193,7 +197,7 @@ proc_labeloffset_t proc_labeloffset[] =
 };
 
 
-char procbuffer_option_str[]    = "tT";
+char procbuffer_option_str[]    = "tTL:";
 
 int procbuffer_option(void * vproc, void * type_table, int c, const char * str) {
      proc_instance_t * proc = (proc_instance_t *)vproc;
@@ -202,6 +206,9 @@ int procbuffer_option(void * vproc, void * type_table, int c, const char * str) 
      case 't':
      case 'T':
           proc->tcpdns = 1;
+          break;
+     case 'L':
+          proc->label_parent = wsregister_label(type_table, str);
           break;
      }
      return 1;
@@ -795,6 +802,15 @@ static int process_rrec(proc_instance_t * proc, wsdata_t * tdata, wsdata_t * mem
 int procbuffer_decode(void * vproc, wsdata_t * tdata,
                       wsdata_t * member, uint8_t * buf, int buflen) {
      proc_instance_t * proc = (proc_instance_t*)vproc;
+
+     if (proc->label_parent) {
+          wsdata_t * parent =
+               tuple_member_create_wsdata(tdata, dtype_tuple, proc->label_parent);
+
+          if (parent) {
+               tdata = parent;
+          }
+     }
 
      if (proc->tcpdns) {
           if (buflen < 2) {
