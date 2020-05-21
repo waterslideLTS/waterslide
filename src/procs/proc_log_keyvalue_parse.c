@@ -46,7 +46,7 @@ char *proc_menus[]     = { "Filters", NULL };
 char *proc_alias[]     = { "kvparse", "kvlog", "kvp", "syslog", NULL };
 char proc_name[]       = PROC_NAME;
 char proc_purpose[]    = "decode logs that have key=value substrings";
-char *proc_synopsis[] = { "substring LABEL_TO_SUBSTRING", NULL};
+char *proc_synopsis[] = { "log_keyvalue_parse LABEL_SYSLOG_BUFER", NULL};
 char proc_description[] = "decode a string from a log into key, values.  Useful for syslog parsing.";
 proc_example_t proc_examples[] = {
      {NULL,""}

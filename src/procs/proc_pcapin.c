@@ -98,7 +98,6 @@ typedef struct _proc_instance_t {
      char * iface_name;
      char * bpf_string;
      struct bpf_program bpfp;
-	int bpf_compiled;
      int linktype;
      uint32_t link_layer_length;
 
@@ -158,6 +157,18 @@ static int proc_cmd_options(int, char **, proc_instance_t *, void *);
 // stdin and list of files
 static int data_source(void *, wsdata_t*, ws_doutput_t*, int);
 
+int local_compile_bpf(proc_instance_t * proc) {
+     if (proc->handler && proc->bpf_string)  {
+          if (pcap_compile(proc->handler, &proc->bpfp, proc->bpf_string, 0, PCAP_NETMASK_UNKNOWN) == -1) {
+               return 0;
+          }
+          if (pcap_setfilter(proc->handler, &proc->bpfp) == -1) {
+               return 0;
+          }
+     }
+     return 1;
+}
+
 #define PCAP_FILENAME_MAX 1024
 static int read_stdin_filename(proc_instance_t * proc) {
 	char buf[PCAP_FILENAME_MAX +1];
@@ -183,13 +194,7 @@ static int read_stdin_filename(proc_instance_t * proc) {
 
 		if (proc->handler) {
                tool_print("opened pcap file %s", buf);
-			if (proc->bpf_compiled) {
-				if (pcap_setfilter(proc->handler, &proc->bpfp) == -1) {
-					fprintf(stderr, "Couldn't install filter %s: %s\n",
-						   proc->bpf_string, pcap_geterr(proc->handler));
-				}
-			}
-
+               local_compile_bpf(proc);
                return 1;
 		}
 		else {
@@ -306,18 +311,10 @@ int proc_init(wskid_t * kid, int argc, char ** argv, void ** vinstance,
           }
      }
      if (checkfilter && proc->bpf_string)  {
-          if (pcap_compile(proc->handler, &proc->bpfp, proc->bpf_string, 0, PCAP_NETMASK_UNKNOWN) == -1) {
+          if (!local_compile_bpf(proc)) {
                fprintf(stderr, "Couldn't parse filter %s: %s\n",
                        proc->bpf_string, pcap_geterr(proc->handler));
-               return(2);
-          }
-		else {
-			proc->bpf_compiled = 1;
-		}
-          if (pcap_setfilter(proc->handler, &proc->bpfp) == -1) {
-               fprintf(stderr, "Couldn't install filter %s: %s\n",
-                  proc->bpf_string, pcap_geterr(proc->handler));
-               return(2);
+               return 0;
           }
      }
 

@@ -59,9 +59,30 @@ proc_hmac$(WS_SFX): proc_hmac.c
 	$(SHOWFILE) 
 	$(CC) $(CFLAGS) $< -o $@ $(LDFLAGS) -lcrypto
 	$(INSTALL) $@ $(WS_PROCS_DIR)
+proc_syslog_tcp_in$(WS_SFX): proc_syslog_tcp_in.c .FORCE
+	$(SHOWFILE) 
+	$(CC) $(CFLAGS) $< -o $@ $(LDFLAGS) -lcrypto -lssl
+	$(INSTALL) $@ $(WS_PROCS_DIR)
+.FORCE:
+
 else
+proc_syslog_tcp_in$(WS_SFX): proc_syslog_tcp_in.c
+	$(SHOWFILE) 
+	$(CC) $(CFLAGS) -DNOTLS=1 $< -o $@ $(LDFLAGS)
+	$(INSTALL) $@ $(WS_PROCS_DIR)
 proc_hmac$(WS_SFX): proc_hmac.c
 	@echo " not building $@, set HASCRYPTO=1 to build"
+endif
+
+
+ifdef HASEXPAT
+proc_parsexml$(WS_SFX): proc_parsexml.c
+	$(SHOWFILE) 
+	$(CC) $(CFLAGS) $< -o $@ $(LDFLAGS) -lexpat
+	$(INSTALL) $@ $(WS_PROCS_DIR)
+else
+proc_parsexml$(WS_SFX): proc_parsexml.c
+	@echo " not building $@, set HASEXPAT=1 to build"
 endif
 
 
