@@ -81,6 +81,7 @@ proc_port_t proc_input_ports[] =  {
      {"none","Get value at key"},
      {"GET","Get value at key"},
      {"SET","Set value at key"},
+     {"SETNX","Set value at key if key does not exist"},
      {"INCR","Increment value at key"},
      {"DECR","Decrement value at key"},
      {"PUBLISH","Publish value at specified channel"},
@@ -118,6 +119,7 @@ proc_example_t proc_examples[] =  {
 //function prototypes for local functions
 static int proc_get(void *, wsdata_t*, ws_doutput_t*, int);
 static int proc_set(void *, wsdata_t*, ws_doutput_t*, int);
+static int proc_setnx(void *, wsdata_t*, ws_doutput_t*, int);
 static int proc_incr(void *, wsdata_t*, ws_doutput_t*, int);
 static int proc_decr(void *, wsdata_t*, ws_doutput_t*, int);
 static int proc_publish(void *, wsdata_t*, ws_doutput_t*, int);
@@ -271,6 +273,10 @@ proc_process_t proc_input_set(void * vinstance, wsdatatype_t * meta_type,
           dprint("input GET");
           return proc_get;
      }
+     else if (wslabel_match(type_table, port, "SETNX")) {
+          dprint("input SETNX");
+          return proc_setnx;
+     }
      else if (wslabel_match(type_table, port, "SET")) {
           dprint("input SET");
           return proc_set;
@@ -387,6 +393,57 @@ static int nest_search_callback_one(void * vproc, void * vkey,
      *pkey = member;
      return 1;
 }
+
+static int proc_setnx(void * vinstance, wsdata_t * tuple,
+                        ws_doutput_t * dout, int type_index) {
+
+     proc_instance_t * proc = (proc_instance_t*)vinstance;
+     proc->meta_process_cnt++;
+
+     wsdata_t * key = NULL;
+     wsdata_t * value = NULL;
+
+     tuple_nested_search(tuple, &proc->nest_keys,
+                         nest_search_callback_one,
+                         proc, &key);
+     tuple_nested_search(tuple, &proc->nest_values,
+                         nest_search_callback_one,
+                         proc, &value);
+
+     if (key && value) {
+          dprint("found key and value");
+          char * keybuf = NULL;
+          int keylen = 0;
+          char * valbuf = NULL;
+          int vallen = 0;
+          
+          if (dtype_string_buffer(key, &keybuf, &keylen) && 
+              dtype_string_buffer(value, &valbuf, &vallen)) {
+               dprint("found key and value strings");
+
+               redisReply *reply;
+
+               if (proc->expire_sec) {
+                    reply = redisCommand(proc->rc, "SET %b %b NX EX %d",
+                                         keybuf, keylen, valbuf, vallen,
+                                         (int)proc->expire_sec);
+               }
+               else {
+                    dprint("setting %.*s %.*s", keylen, keybuf, vallen, valbuf);
+                    reply = redisCommand(proc->rc, "SET %b %b NX",
+                                         keybuf, keylen, valbuf, vallen);
+               }
+               if (reply) {
+                    freeReplyObject(reply);
+               }
+          }
+     }
+
+     //always return 1 since we don't know if table will flush old data
+     return 1;
+}
+
+
 
 static int proc_set(void * vinstance, wsdata_t * tuple,
                       ws_doutput_t * dout, int type_index) {
