@@ -428,7 +428,7 @@ static inline int find_fixedmatch(proc_instance_t * proc, wsdata_t * wsd, char *
                                            cursor->len);
                }
                if (mlabel) {
-                    if (!wsdata_check_label(wsd, mlabel)) {
+                    if (wsd && !wsdata_check_label(wsd, mlabel)) {
                          if (tdata) {
                               tuple_add_member_label(tdata, wsd, mlabel);
                          }
