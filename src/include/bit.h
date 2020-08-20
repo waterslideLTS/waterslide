@@ -20,6 +20,11 @@ static inline uint32_t uint32_count_bits(uint32_t v) {
 
      return (uint32_t)c;
 }
+static inline uint32_t uint64_count_bits(uint64_t v) {
+     uint32_t u1 = (v & 0xFFFFFFFF);
+     uint32_t u2 = ((v>>32) & 0xFFFFFFFF);
+     return uint32_count_bits(u1) + uint32_count_bits(u2);
+}
 
 //compute log2 of an unsigned int
 // by Eric Cole - http://graphics.stanford.edu/~seander/bithacks.htm
