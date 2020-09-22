@@ -62,6 +62,8 @@ proc_option_t proc_opts[]      =  {
      "output as epoch double",0,0},
      {'u',"","",
      "output as epoch integer",0,0},
+     {'P',"","timespec",
+     "parse input string as UTC timestamp per specification",0,0},
      {' ',"","",
      "",0,0}
 };
@@ -97,6 +99,8 @@ typedef struct _proc_instance_t {
      int as_epoch;
      int as_string;
      int altzulu;
+     int as_parse;
+     char * parse_string;
 } proc_instance_t;
 
 static int proc_cmd_options(int argc, char ** argv, 
@@ -104,8 +108,12 @@ static int proc_cmd_options(int argc, char ** argv,
 
      int op;
 
-     while ((op = getopt(argc, argv, "eSzuUo:O:L:")) != EOF) {
+     while ((op = getopt(argc, argv, "P:eSzuUo:O:L:")) != EOF) {
           switch (op) {
+          case 'P':
+               proc->parse_string = strdup(optarg);
+               proc->as_parse = 1;
+               break;
           case 'e':
                proc->as_epoch = 1;
                break;
@@ -209,7 +217,6 @@ static int snprint_alt_zulu(char * buf, int len,
      struct tm *tp;
      time_t stime;
 
-
      /* these variables are not currently in use
      static unsigned b_sec;
      static unsigned b_usec;
@@ -280,12 +287,38 @@ static int add_ts_to_tuple(proc_instance_t * proc, wsdata_t *tdata,
      return 1;
 }
 
+static int parse_time_string(proc_instance_t * proc, wsdata_t * tdata,
+                             char * buf, int blen) {
+     //create a null terminated string
+     char * nstring = malloc(blen + 1);
+     if (!nstring) {
+          return 0;
+     }
+     memcpy(nstring, buf, blen);
+     nstring[blen] = 0;
+
+     struct tm tparse;
+     strptime(nstring, proc->parse_string, &tparse);
+     time_t sec = timegm(&tparse);
+     tuple_member_create_sec(tdata, sec, proc->label_datetime);
+
+     free(nstring);
+     return 1;
+}
+
 static int nest_search_callback_match(void * vproc, void * vevent,
                                       wsdata_t * tdata, wsdata_t * member) {
      proc_instance_t * proc = (proc_instance_t*)vproc;
      if (member->dtype == dtype_ts) {
           wsdt_ts_t * ts = (wsdt_ts_t*)member->data;
           return add_ts_to_tuple(proc, tdata, ts->sec, ts->usec);
+     }
+     else if (proc->as_parse && (member->dtype == dtype_string)) {
+          char * buf;
+          int blen;
+          if (dtype_string_buffer(member, &buf, &blen)) {
+               return parse_time_string(proc, tdata, buf, blen);
+          }
      }
      else if ((member->dtype == dtype_string) || (member->dtype == dtype_double)) {
           double epochd = 0;
