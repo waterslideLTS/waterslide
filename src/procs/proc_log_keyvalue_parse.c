@@ -134,8 +134,14 @@ int procbuffer_option(void * vproc, void * type_table,
                break;
           case 'R':
                if (strlen(str) > 0) {
-                    proc->record_delimiter = (uint8_t)str[0];
-                    tool_print("record delimiter set to '%c'", str[0]);
+                    if (strcmp(str,"TAB") == 0) {
+                         proc->record_delimiter = '\t';
+                         tool_print("record delimter set to tab character");
+                    }
+                    else {
+                         proc->record_delimiter = (uint8_t)str[0];
+                         tool_print("record delimiter set to '%c'", str[0]);
+                    }
                }
                break;
           case 'a':
@@ -390,7 +396,7 @@ static size_t get_next_record(proc_instance_t * proc,
                break;
                
           }
-          if (buf[0] == proc->kv_delimiter) {
+          if (!vstart && (buf[0] == proc->kv_delimiter)) {
                if (!keyend) {
                     keyend = buf;
                }
