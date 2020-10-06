@@ -572,7 +572,7 @@ static int process_edns(proc_instance_t * proc, wsdata_t * tdata, wsdata_t *memb
 #define MIN_RREC (11)
 //returns offset after record processing
 static int process_rrec(proc_instance_t * proc, wsdata_t * tdata, wsdata_t * member,
-                 int rcount, uint8_t * buf, int buflen,
+                 uint16_t rcount, uint8_t * buf, int buflen,
                  uint8_t * entire, int entirelen,
                  wslabel_t * label_rec) {
      dprint("process_rrec");

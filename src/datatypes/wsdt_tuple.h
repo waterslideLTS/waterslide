@@ -134,7 +134,7 @@ static inline int tuple_add_member_label(wsdata_t * wsd_tuple,
 static inline wsdt_tuple_t * wsdt_tuple_internal_alloc(wsdt_tuple_freeq_t *tfq,
                                                        int newlen) {
      wsdt_tuple_t *newtup;
-     int tuplesize = TUPLE_ALLOC_SIZE(newlen, tfq->index_len);
+     size_t tuplesize = TUPLE_ALLOC_SIZE(newlen, tfq->index_len);
      uint8_t *vtup = (uint8_t*)calloc(1, tuplesize);
      if (!vtup) {
           return NULL;

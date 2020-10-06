@@ -489,7 +489,13 @@ int proc_init(wskid_t * kid, int argc, char ** argv, void ** vinstance, ws_sourc
      }
      set_outlabels(proc, type_table);
 
-     int kdata_len = sizeof(key_data_t) + (proc->n * proc->num_val * sizeof(wsdata_t*));
+     size_t kdtemp = ((size_t)proc->n * (size_t)proc->num_val *
+                   sizeof(wsdata_t*)) + sizeof(key_data_t);
+     if (kdtemp > INT_MAX) {
+          error_print("value sizes exceed limits");
+          return 0;
+     }
+     int kdata_len = kdtemp;
 
      //other init - init the stringhash table
 

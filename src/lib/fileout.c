@@ -393,7 +393,10 @@ make_basename(filespec_t *fs, wsdata_t *input, time_t basetime)
 		    strncat(result, "timestamp", MAX_NAME_LEN - strlen(result) - 1);
 	       } else {
 		    char tmptm[300];
-		    strftime(tmptm, 300, &fs->namepiece[i][1], gmtime(&basetime));
+              struct tm gtm;
+              gmtime_r(&basetime, &gtm);
+		    strftime(tmptm, 300, &fs->namepiece[i][1], &gtm);
+		    //strftime(tmptm, 300, &fs->namepiece[i][1], gmtime(&basetime));
 		    strncat(result, tmptm, MAX_NAME_LEN - strlen(result) - 1);
 		    break;
 	       }

@@ -68,6 +68,9 @@ typedef struct _bloomfilter_t {
 static inline int bloomfilter_resize(bloomfilter_t * bf, 
                                      uint8_t rnds, uint8_t size) { 
      /* allocate a new bit vector initialized to false */
+     if (size > 36) { //check if size exceeds 32bits
+          return 0;
+     }
      uint32_t words = 1<<(size-5);
      if (bf->bits) {
           if (bf->pwrsize == size) {

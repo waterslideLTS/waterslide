@@ -375,13 +375,19 @@ static inline int snprint_uint16_list(char * jabuf, int max,
           }
           else {
                uint16_t val = (buf[i]<<8) + buf[i+1];
+               int res;
                if (hasval) {
-                    jalen += snprintf(jabuf + jalen, max - jalen, "-%u", val); 
+                    res = snprintf(jabuf + jalen, max - jalen, "-%u", val); 
                }
                else {
-                    jalen += snprintf(jabuf + jalen, max - jalen, "%u", val); 
+                    res = snprintf(jabuf + jalen, max - jalen, "%u", val); 
                     hasval = 1;
                }
+               if ((res < 0) || (res >= (max - jalen))) {
+                    dprint("snprint list length exceeded");
+                    break;
+               }
+               jalen += res;
           }
      }
      return jalen;
@@ -397,13 +403,26 @@ static int make_ja3(proc_instance_t * proc,
 
      char * jabuf = proc->jabuf; //use preallocated buffer
      int jalen = 0;
+     int sres;
 
-     jalen += snprintf(jabuf + jalen, MAXJA3 - jalen, "%u,", version); 
+     sres = snprintf(jabuf + jalen, MAXJA3 - jalen, "%u,", version); 
+     if ((sres < 0) || (sres >= (MAXJA3 - jalen))) {
+          return 0;
+     }
+     jalen += sres;
 
-     jalen += snprint_uint16_list(jabuf + jalen, MAXJA3 - jalen,
+     sres = snprint_uint16_list(jabuf + jalen, MAXJA3 - jalen,
                                   ciphersuites, cipherlen);
+     if ((sres < 0) || (sres >= (MAXJA3 - jalen))) {
+          return 0;
+     }
+     jalen += sres;
 
-     jalen += snprintf(jabuf + jalen, MAXJA3 - jalen, ","); 
+     sres = snprintf(jabuf + jalen, MAXJA3 - jalen, ","); 
+     if ((sres < 0) || (sres >= (MAXJA3 - jalen))) {
+          return 0;
+     }
+     jalen += sres;
 
      int hasext = 0;
 
@@ -427,13 +446,17 @@ static int make_ja3(proc_instance_t * proc,
           }
           else {
                if (hasext) {
-                    jalen += snprintf(jabuf + jalen, MAXJA3 - jalen, "-%u", extid); 
+                    sres = snprintf(jabuf + jalen, MAXJA3 - jalen, "-%u", extid); 
                }
                else {
                     hasext = 1;
-                    jalen += snprintf(jabuf + jalen, MAXJA3 - jalen, "%u", extid); 
+                    sres = snprintf(jabuf + jalen, MAXJA3 - jalen, "%u", extid); 
                }
 
+               if ((sres < 0) || (sres >= (MAXJA3 - jalen))) {
+                    break;
+               }
+               jalen += sres;
           }
           if (extid == 0x000a) {
                ec = exbuf + 4;
@@ -449,16 +472,30 @@ static int make_ja3(proc_instance_t * proc,
           exbuflen -= 4 + extlen;
      }
 
-     jalen += snprintf(jabuf + jalen, MAXJA3 - jalen, ","); 
+     sres = snprintf(jabuf + jalen, MAXJA3 - jalen, ","); 
+     if ((sres < 0) || (sres >= (MAXJA3 - jalen))) {
+          return 0;
+     }
+     jalen += sres;
+
      if (ec && (eclen >2)) {
           dprint("hasec %d", eclen);
           int tlen = (ec[0]<<8) + ec[1];
           if (tlen == (eclen - 2)) {
-               jalen += snprint_uint16_list(jabuf + jalen, MAXJA3 - jalen,
+               sres = snprint_uint16_list(jabuf + jalen, MAXJA3 - jalen,
                                             ec + 2, eclen - 2);
+               if ((sres < 0) || (sres >= (MAXJA3 - jalen))) {
+                    return 0;
+               }
+               jalen += sres;
           }
      }
-     jalen += snprintf(jabuf + jalen, MAXJA3 - jalen, ","); 
+     sres = snprintf(jabuf + jalen, MAXJA3 - jalen, ","); 
+     if ((sres < 0) || (sres >= (MAXJA3 - jalen))) {
+          return 0;
+     }
+     jalen += sres;
+
      if (ecf && (ecflen > 1)) {
           dprint("hasecf %d %u", ecflen, ecf[0]);
           int tlen = ecf[0];
@@ -467,12 +504,16 @@ static int make_ja3(proc_instance_t * proc,
                int i;
                for (i = 0; i < tlen; i++) {
                     if (i > 0) {
-                         jalen += snprintf(jabuf + jalen, MAXJA3 - jalen, "-%u",
+                         sres = snprintf(jabuf + jalen, MAXJA3 - jalen, "-%u",
                                            ecf[i]); 
                     } else {
-                         jalen += snprintf(jabuf + jalen, MAXJA3 - jalen, "%u",
+                         sres = snprintf(jabuf + jalen, MAXJA3 - jalen, "%u",
                                            ecf[i]); 
                     }
+                    if ((sres < 0) || (sres >= (MAXJA3 - jalen))) {
+                         break;
+                    }
+                    jalen += sres;
 
                }
           }
