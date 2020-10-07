@@ -90,9 +90,9 @@ typedef struct _wsdt_tuple_t {
 
 #define TUPLE_ALLOC_SIZE(max_members, index_len)  \
      (sizeof(wsdt_tuple_t) + \
-      sizeof(wsdata_t *) * (max_members - WSDT_TUPLE_MIN) + \
-      index_len * sizeof(int) + \
-      index_len * max_members * sizeof(wsdata_t *)) 
+      sizeof(wsdata_t *) * ((size_t)max_members - WSDT_TUPLE_MIN) + \
+      (size_t)index_len * sizeof(int) + \
+      (size_t)index_len * (size_t)max_members * sizeof(wsdata_t *)) 
 
 #define TUPLE_MEMBER_CNT_OFFSET(max_members, index_len)  \
      (sizeof(wsdt_tuple_t) + \
