@@ -1980,9 +1980,14 @@ wsdata_t* getWSCVString(wscalcValue v) {
           return v.v.s;
           break;
      case WSCVT_TIME:
-          asctime_r(gmtime(&v.v.t.tv_sec), buf);
-          buf[24] = '\0'; // Trim off the \n\0
-          break;
+		{
+           struct tm gtm;
+		 gmtime_r(&v.v.t.tv_sec, &gtm);
+		 asctime_r(&gtm, buf);
+           //asctime_r(gmtime(&v.v.t.tv_sec), buf);
+           buf[24] = '\0'; // Trim off the \n\0
+           break;
+		}
      default:
           error_print("Invalid type to convert. (%d to %d)", v.type, WSCVT_STRING);
      }

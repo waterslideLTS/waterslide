@@ -218,8 +218,10 @@ static inline uint32_t wslabel_t_read(void * vdata, uint32_t data_alloc, FILE * 
           kd->label = (wslabel_t *)calloc(sizeof(wslabel_t), 1);
           rtn = fread(kd->label, sizeof(wslabel_t), 1, fp);
           rtn += fread(&len, sizeof(int), 1, fp);
-          kd->label->name = (char *)calloc(len, 1);
-          rtn += fread(kd->label->name, len, 1, fp);
+          if (len < 255) {
+               kd->label->name = (char *)calloc(len, 1);
+               rtn += fread(kd->label->name, len, 1, fp);
+          }
           bytes += sizeof(wslabel_t) + 2*sizeof(uint32_t) + len;
      }
 

@@ -90,9 +90,9 @@ typedef struct _wsdt_tuple_t {
 
 #define TUPLE_ALLOC_SIZE(max_members, index_len)  \
      (sizeof(wsdt_tuple_t) + \
-      sizeof(wsdata_t *) * (max_members - WSDT_TUPLE_MIN) + \
-      index_len * sizeof(int) + \
-      index_len * max_members * sizeof(wsdata_t *)) 
+      sizeof(wsdata_t *) * ((size_t)max_members - WSDT_TUPLE_MIN) + \
+      (size_t)index_len * sizeof(int) + \
+      (size_t)index_len * (size_t)max_members * sizeof(wsdata_t *)) 
 
 #define TUPLE_MEMBER_CNT_OFFSET(max_members, index_len)  \
      (sizeof(wsdt_tuple_t) + \
@@ -134,7 +134,7 @@ static inline int tuple_add_member_label(wsdata_t * wsd_tuple,
 static inline wsdt_tuple_t * wsdt_tuple_internal_alloc(wsdt_tuple_freeq_t *tfq,
                                                        int newlen) {
      wsdt_tuple_t *newtup;
-     int tuplesize = TUPLE_ALLOC_SIZE(newlen, tfq->index_len);
+     size_t tuplesize = TUPLE_ALLOC_SIZE(newlen, tfq->index_len);
      uint8_t *vtup = (uint8_t*)calloc(1, tuplesize);
      if (!vtup) {
           return NULL;

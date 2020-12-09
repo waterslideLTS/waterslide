@@ -354,6 +354,11 @@ static inline stringhash9a_t * sh9a_create_ibits(uint32_t ibits) {
 
      sht->ibits = ibits;
      sht->index_size = 1<<(ibits);
+
+     //do some bounds checking on table size
+     if (sht->index_size > 0x7FFFFFFF) {
+          return NULL;
+     }
      sht->max_insert_cnt = sht->index_size >> 4;
      sht->table_bit = 1<<(ibits);
      sht->mask_index = ((uint64_t)~0)>>(64-(ibits));
