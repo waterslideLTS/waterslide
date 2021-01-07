@@ -30,6 +30,7 @@ SOFTWARE.
 #include <stdint.h>
 #include <stdio.h>
 #include <unistd.h>
+#include <limits.h>
 #include "waterslide.h"
 #include "waterslidedata.h"
 #include "datatypes/wsdt_tuple.h"
