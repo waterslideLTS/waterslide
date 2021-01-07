@@ -31,6 +31,7 @@ OTHER REQUIRED LICENSE TERMS
 #include <netinet/in.h>
 #include <netinet/ip.h>
 #include <netinet/ip6.h>
+#define __FAVOR_BSD 1
 #include <netinet/tcp.h>
 #include <netinet/if_ether.h>
 #include <net/ethernet.h>
