@@ -197,6 +197,9 @@ static inline void * wsheap_update(wsheap_t *h, void *data) {
 static inline void * wsheap_replace_root(wsheap_t *h, void *data) {
      void * rtn_data = NULL;
      if (h->count) {
+          if (h->cmp(h->heap[0], data) >= 0) {
+               return NULL;
+          } 
           h->replace(h->heap[0], data, h->aux);
           rtn_data = h->heap[0];
           wsheap_demote(h, 0);
